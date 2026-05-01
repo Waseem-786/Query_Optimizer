@@ -1,0 +1,141 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]:
+          - generic [ref=e9]: QueryMind
+          - generic [ref=e10]: SQL Workbench
+        - button "Switch to light theme" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+      - generic [ref=e17]:
+        - button "Optimize" [ref=e18]:
+          - img [ref=e19]
+          - text: Optimize
+        - button "Assistant" [ref=e21]:
+          - img [ref=e22]
+          - text: Assistant
+      - generic [ref=e24]:
+        - button "New query" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - text: New query
+        - generic [ref=e28]:
+          - img
+          - textbox "Search history…" [ref=e29]
+      - generic [ref=e30]:
+        - generic [ref=e31]: History · 2
+        - list [ref=e32]:
+          - listitem [ref=e33]:
+            - generic [ref=e34] [cursor=pointer]:
+              - generic [ref=e35]:
+                - generic [ref=e37]: Slow employee search
+                - button "Delete" [ref=e38]:
+                  - img [ref=e39]
+              - generic [ref=e41]: Function on indexed column · 2.3s → 0.18s · 12m ago
+          - listitem [ref=e42]:
+            - generic [ref=e43] [cursor=pointer]:
+              - generic [ref=e44]:
+                - generic [ref=e46]: Recent orders join cleanup
+                - button "Delete" [ref=e47]:
+                  - img [ref=e48]
+              - generic [ref=e50]: Subquery → JOIN, removed SELECT * · 1d ago
+      - button "No connection Click to connect Oracle DB" [ref=e51]:
+        - img [ref=e53]
+        - generic [ref=e57]:
+          - generic [ref=e58]: No connection
+          - generic [ref=e59]: Click to connect Oracle DB
+        - img [ref=e60]
+    - main [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - img [ref=e68]
+              - generic [ref=e70]: Query editor
+              - generic [ref=e71]: ·
+              - generic [ref=e72]: 6 lines
+            - generic [ref=e73]:
+              - generic [ref=e74]: ⌘ ↵ to optimize
+              - button "Optimize" [ref=e75] [cursor=pointer]:
+                - img [ref=e76]
+                - text: Optimize
+          - generic [ref=e78]:
+            - generic:
+              - generic: "1"
+              - generic: "2"
+              - generic: "3"
+              - generic: "4"
+              - generic: "5"
+              - generic: "6"
+            - generic:
+              - code: "-- Welcome to QueryMind. Paste a slow query, then press ⌘↵ (or click Optimize). SELECT * FROM employees e, departments d WHERE e.department_id = d.department_id AND UPPER(e.last_name) LIKE '%SMITH%' ORDER BY e.hire_date DESC;"
+            - textbox "-- Paste a slow Oracle query here…" [ref=e79]: "-- Welcome to QueryMind. Paste a slow query, then press ⌘↵ (or click Optimize). SELECT * FROM employees e, departments d WHERE e.department_id = d.department_id AND UPPER(e.last_name) LIKE '%SMITH%' ORDER BY e.hire_date DESC;"
+          - generic [ref=e80]:
+            - generic [ref=e81]: "Try:"
+            - button "Slow JOIN" [ref=e82]
+            - button "Subquery → JOIN" [ref=e83]
+            - button "SELECT *" [ref=e84]
+            - generic [ref=e87]: Demo mode (no DB)
+        - generic [ref=e91]:
+          - img [ref=e93]
+          - heading "Tune your first query" [level=2] [ref=e95]
+          - paragraph [ref=e96]: Paste a slow Oracle query on the left and hit Optimize. You'll see plan, rules, a rewrite, and a benchmark — all in one place.
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - img [ref=e99]
+              - generic [ref=e102]: Execution plan
+              - generic [ref=e103]: Step-by-step EXPLAIN with cost & rows
+            - generic [ref=e104]:
+              - img [ref=e105]
+              - generic [ref=e107]: Rule analysis
+              - generic [ref=e108]: Catches anti-patterns you'd miss in review
+            - generic [ref=e109]:
+              - img [ref=e110]
+              - generic [ref=e112]: AI rewrite
+              - generic [ref=e113]: A side-by-side optimized version
+            - generic [ref=e114]:
+              - img [ref=e115]
+              - generic [ref=e118]: Benchmark
+              - generic [ref=e119]: Before vs after, with speedup factor
+    - dialog [ref=e129]:
+      - generic [ref=e131]:
+        - generic [ref=e132]:
+          - img [ref=e134]
+          - generic [ref=e138]:
+            - generic [ref=e139]: Oracle Database Connection
+            - generic [ref=e140]: Credentials are kept in memory for this session only.
+          - button "Close" [ref=e141] [cursor=pointer]:
+            - img [ref=e142]
+        - generic [ref=e144]:
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - generic [ref=e147]: Username
+              - textbox "Username" [active] [ref=e148]:
+                - /placeholder: hr
+            - generic [ref=e149]:
+              - generic [ref=e150]: Password
+              - generic [ref=e151]:
+                - img [ref=e152]
+                - textbox "Password" [ref=e155]:
+                  - /placeholder: ••••••••
+            - generic [ref=e156]:
+              - generic [ref=e157]: Host
+              - textbox "Host" [ref=e158]:
+                - /placeholder: db.example.com
+            - generic [ref=e159]:
+              - generic [ref=e160]: Port
+              - textbox "Port" [ref=e161]:
+                - /placeholder: "1521"
+                - text: "1521"
+            - generic [ref=e162]:
+              - generic [ref=e163]: Service name
+              - textbox "Service name" [ref=e164]:
+                - /placeholder: ORCLPDB1
+          - generic [ref=e166]:
+            - button "Test connection" [ref=e167] [cursor=pointer]
+            - generic [ref=e168]:
+              - button "Cancel" [ref=e169] [cursor=pointer]
+              - button "Save & connect" [ref=e170] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e125] [cursor=pointer]:
+    - img [ref=e126]
+  - alert [ref=e171]

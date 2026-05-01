@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(claude mcp *)",
+      "mcp__playwright__browser_tabs",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "Bash(git -C c:/Users/Admin/Desktop/Study/Gravity/Query_Optimizer status --short)",
+      "Bash(git -C c:/Users/Admin/Desktop/Study/Gravity/Query_Optimizer/frontend status --short)",
+      "Bash(node scripts/install-rule-engine.mjs flexcube flexcube 172.20.3.77:1521/FCUBS)",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_wait_for"
     ]
   }
 }

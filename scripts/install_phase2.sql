@@ -37,7 +37,8 @@ PROMPT ================================================================
 PROMPT  Phase 2 Installation Complete!
 PROMPT
 PROMPT  Objects created:
-PROMPT    - Table:    OPTIMIZATION_RULES  (7 rules seeded)
+PROMPT    - Table:    OPTIMIZATION_RULES  (14 rules seeded:
+PROMPT                  7 core + 3 deep-analysis + 4 precision)
 PROMPT    - Table:    QUERY_RULE_RESULTS
 PROMPT    - Package:  RULE_ENGINE_PKG
 PROMPT

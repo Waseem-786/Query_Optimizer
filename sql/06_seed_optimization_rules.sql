@@ -131,6 +131,159 @@ VALUES (
  || 'Review the query for missing WHERE predicates linking each table alias.'
 );
 
+-- ============================================================================
+-- Rule 8 — Table Context Summary (STRUCTURE / LOW)
+--   Always-on informational rule. Emits per-table size, index, and
+--   primary-key data so downstream consumers (AI, frontend) get the full
+--   schema picture without making extra round-trips.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'TABLE_CONTEXT_SUMMARY',
+    'STRUCTURE', 'LOW',
+    'Snapshot of every table referenced by the query: row count, block count, '
+ || 'existing indexes, and primary-key columns sourced from USER_TABLES, '
+ || 'USER_INDEXES, USER_IND_COLUMNS, and USER_CONSTRAINTS.',
+    'No action required. This rule provides schema context for the AI rewriter '
+ || 'and human reviewers. Verify statistics are current with '
+ || 'DBMS_STATS.GATHER_TABLE_STATS so the row/block counts reflect reality.'
+);
+
+-- ============================================================================
+-- Rule 9 — Aggregate / Sort on Unindexed Column (PERFORMANCE / MEDIUM)
+--   Detects GROUP BY and ORDER BY columns that are not the leading column of
+--   any index. Sorting an unindexed column forces a full sort pass.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'AGGREGATE_INDEX_HINT',
+    'PERFORMANCE', 'MEDIUM',
+    'Columns referenced in GROUP BY or ORDER BY are not the leading column of '
+ || 'any existing index. Without a usable index Oracle must perform a full '
+ || 'in-memory sort (or temp-tablespace sort if the data exceeds PGA), which '
+ || 'consumes CPU and may spill to disk on large datasets.',
+    'Add an index on the GROUP BY / ORDER BY column, ordered to match the sort. '
+ || 'Composite indexes covering both the WHERE filter and the GROUP BY column '
+ || 'enable index-only sorted access. For aggregations with a fixed grouping '
+ || 'set, consider a materialized view with REFRESH FAST ON COMMIT.'
+);
+
+-- ============================================================================
+-- Rule 10 — High Plan Cost (SCAN / HIGH)
+--   Fires when the optimizer estimates a total cost above a threshold. Cost
+--   is unitless but a useful relative indicator of expensive plans.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'HIGH_COST_PLAN',
+    'SCAN', 'HIGH',
+    'The optimizer-estimated cost of this plan exceeds the threshold (1000). '
+ || 'High cost typically indicates one or more of: full table scans, large '
+ || 'sorts, hash joins on big inputs, missing indexes, or stale statistics. '
+ || 'Cost is a unitless I/O+CPU estimate produced by the cost-based optimizer.',
+    'Inspect the execution plan top-down. The line with the highest individual '
+ || 'cost is usually the bottleneck. Common fixes: add an index on the WHERE '
+ || 'predicate, narrow the result early with a more selective predicate, '
+ || 'or refresh table statistics. Consider partition pruning for very large '
+ || 'tables.'
+);
+
+-- ============================================================================
+-- Rule 11 — Implicit Type Conversion (PERFORMANCE / HIGH)
+--   Detects when the optimizer injects INTERNAL_FUNCTION() or SYS_OP_C2C()
+--   into a predicate, indicating a silent datatype coercion (DATE↔VARCHAR,
+--   NUMBER↔VARCHAR, NCHAR↔CHAR). These coercions disable B-tree access on the
+--   coerced column AND make results NLS-dependent.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'IMPLICIT_TYPE_CONVERSION',
+    'PERFORMANCE', 'HIGH',
+    'The execution plan shows an implicit datatype conversion injected into a '
+ || 'predicate (INTERNAL_FUNCTION or SYS_OP_C2C around an indexed column). '
+ || 'This typically happens when a DATE column is compared to a string literal, '
+ || 'a NUMBER column to a quoted value, or NCHAR to CHAR. The conversion '
+ || 'disables index access on the wrapped column and the comparison silently '
+ || 'depends on NLS_DATE_FORMAT / NLS_NUMERIC_CHARACTERS, which can produce '
+ || 'wrong results or ORA-01843 / ORA-01722 in another session.',
+    'Match datatypes explicitly on the literal side. '
+ || 'Replace  WHERE trn_dt <= ''07-FEB-2020''  with  '
+ || 'WHERE trn_dt <= TO_DATE(''2020-02-07'',''YYYY-MM-DD'')  '
+ || 'or use ANSI date literals: WHERE trn_dt <= DATE ''2020-02-07''. '
+ || 'For numbers, drop the quotes: branch_code = 114 (not ''114''). '
+ || 'Once the literal type matches the column, the optimizer can use the index.'
+);
+
+-- ============================================================================
+-- Rule 12 — Literal Instead of Bind (PERFORMANCE / LOW)
+--   Detects WHERE col = '<literal>'  or  WHERE col = <number>  patterns
+--   where the column has an index but the literal is hardcoded — preventing
+--   cursor sharing and inflating the shared pool with near-duplicate plans.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'LITERAL_INSTEAD_OF_BIND',
+    'PERFORMANCE', 'LOW',
+    'A WHERE predicate compares an indexed column to a hardcoded literal '
+ || 'instead of a bind variable. Each distinct literal creates a fresh entry '
+ || 'in the cursor cache and forces a hard parse, inflating shared-pool '
+ || 'memory and CPU on high-frequency queries. Literal-driven plans also '
+ || 'expose the application to SQL injection when concatenated dynamically.',
+    'Replace literals with bind variables. '
+ || 'In application code use parameterised queries: '
+ || '  EXECUTE IMMEDIATE ''... WHERE branch_code = :1'' USING p_branch; '
+ || 'In ad-hoc tools enable CURSOR_SHARING=FORCE only as a last resort — '
+ || 'fixing the application is preferable. Bind variables let Oracle re-use '
+ || 'one cursor across thousands of executions.'
+);
+
+-- ============================================================================
+-- Rule 13 — Stale or Missing Statistics (SCAN / MEDIUM)
+--   Reads ALL_TABLES.LAST_ANALYZED for every table referenced. Fires when any
+--   table has NULL stats or LAST_ANALYZED older than 30 days. Stale stats are
+--   the #1 cause of bad plans on otherwise healthy queries.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'STALE_STATISTICS',
+    'SCAN', 'MEDIUM',
+    'One or more tables referenced by the query have NULL or stale optimizer '
+ || 'statistics (LAST_ANALYZED is NULL or older than 30 days). The cost-based '
+ || 'optimizer makes cardinality estimates from these stats; when they are '
+ || 'wrong, it picks the wrong join order, the wrong access path, or the wrong '
+ || 'join method — sometimes by orders of magnitude.',
+    'Refresh statistics for each flagged table: '
+ || 'EXEC DBMS_STATS.GATHER_TABLE_STATS(USER, ''<table_name>'', cascade=>TRUE); '
+ || 'For high-churn tables, schedule a nightly job or enable Oracle''s '
+ || 'automatic stats job (DEFAULT). For very large partitioned tables, prefer '
+ || 'INCREMENTAL stats so partition-level changes do not trigger a full '
+ || 'gather: DBMS_STATS.SET_TABLE_PREFS(USER,''<tbl>'',''INCREMENTAL'',''TRUE'').'
+);
+
+-- ============================================================================
+-- Rule 14 — LIKE with Leading Wildcard (PERFORMANCE / HIGH)
+--   Predicates of the form  col LIKE '%foo'  or  col LIKE '%foo%'  cannot use
+--   a B-tree index — the leading character is unknown so the index range is
+--   the entire column. Forces a full scan on the table.
+-- ============================================================================
+INSERT INTO optimization_rules (rule_name, category, severity, description, recommendation)
+VALUES (
+    'LIKE_LEADING_WILDCARD',
+    'PERFORMANCE', 'HIGH',
+    'A WHERE predicate uses LIKE with a wildcard ( % or _ ) at the start of '
+ || 'the pattern. B-tree indexes are sorted left-to-right by leading '
+ || 'character; with the leading character unknown the optimizer must scan '
+ || 'the entire column. On large tables this becomes a full table scan even '
+ || 'when an index exists.',
+    'Pin the leading character whenever possible: '
+ || 'replace  LIKE ''%foo''  with an indexed reverse-key search or store '
+ || 'pre-reversed values; replace  LIKE ''%foo%''  with Oracle Text (CONTEXT '
+ || 'or CTXCAT index) for substring search; or split the column so the '
+ || 'searchable prefix lives in its own indexed column. For two-prefix cases '
+ || '(LIKE ''1%'' OR LIKE ''2%'') prefer  BETWEEN ''1'' AND ''3''  which keeps '
+ || 'a single index range scan.'
+);
+
 COMMIT;
 
-PROMPT >> 7 optimization rules seeded into OPTIMIZATION_RULES.
+PROMPT >> 14 optimization rules seeded into OPTIMIZATION_RULES (7 core + 3 deep + 4 precision).

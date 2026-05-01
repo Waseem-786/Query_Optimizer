@@ -1,0 +1,870 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]:
+          - generic [ref=e9]: QueryMind
+          - generic [ref=e10]: SQL Workbench
+        - button "Switch to light theme" [ref=e12] [cursor=pointer]:
+          - img [ref=e13]
+      - generic [ref=e17]:
+        - button "Optimize" [ref=e18]:
+          - img [ref=e19]
+          - text: Optimize
+        - button "Assistant" [ref=e21]:
+          - img [ref=e22]
+          - text: Assistant
+      - generic [ref=e24]:
+        - button "New query" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - text: New query
+        - generic [ref=e28]:
+          - img
+          - textbox "Search history…" [ref=e29]
+      - generic [ref=e30]:
+        - generic [ref=e31]: History · 3
+        - list [ref=e32]:
+          - listitem [ref=e253]:
+            - generic [ref=e254] [cursor=pointer]:
+              - generic [ref=e255]:
+                - generic [ref=e257]: SELECT *
+                - button "Delete" [ref=e258]:
+                  - img [ref=e259]
+              - generic [ref=e261]: Oracle analysis complete in 604.68 ms — 5 rule(s) triggered … · just now
+          - listitem [ref=e33]:
+            - generic [ref=e34] [cursor=pointer]:
+              - generic [ref=e35]:
+                - generic [ref=e37]: Slow employee search
+                - button "Delete" [ref=e38]:
+                  - img [ref=e39]
+              - generic [ref=e41]: Function on indexed column · 2.3s → 0.18s · 14m ago
+          - listitem [ref=e42]:
+            - generic [ref=e43] [cursor=pointer]:
+              - generic [ref=e44]:
+                - generic [ref=e46]: Recent orders join cleanup
+                - button "Delete" [ref=e47]:
+                  - img [ref=e48]
+              - generic [ref=e50]: Subquery → JOIN, removed SELECT * · 1d ago
+      - button "Connected flexcube@172.20.3.77" [ref=e251]:
+        - img [ref=e53]
+        - generic [ref=e57]:
+          - generic [ref=e58]: Connected
+          - generic [ref=e59]: flexcube@172.20.3.77
+        - img [ref=e60]
+    - main [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - img [ref=e68]
+              - generic [ref=e70]: Query editor
+              - generic [ref=e71]: ·
+              - generic [ref=e72]: 68 lines
+            - generic [ref=e73]:
+              - generic [ref=e74]: ⌘ ↵ to optimize
+              - button "Optimize" [ref=e75] [cursor=pointer]:
+                - img [ref=e262]
+                - text: Optimize
+          - generic [ref=e78]:
+            - generic:
+              - generic: "1"
+              - generic: "2"
+              - generic: "3"
+              - generic: "4"
+              - generic: "5"
+              - generic: "6"
+              - generic: "7"
+              - generic: "8"
+              - generic: "9"
+              - generic: "10"
+              - generic: "11"
+              - generic: "12"
+              - generic: "13"
+              - generic: "14"
+              - generic: "15"
+              - generic: "16"
+              - generic: "17"
+              - generic: "18"
+              - generic: "19"
+              - generic: "20"
+              - generic: "21"
+              - generic: "22"
+              - generic: "23"
+              - generic: "24"
+              - generic: "25"
+              - generic: "26"
+              - generic: "27"
+              - generic: "28"
+              - generic: "29"
+              - generic: "30"
+              - generic: "31"
+              - generic: "32"
+              - generic: "33"
+              - generic: "34"
+              - generic: "35"
+              - generic: "36"
+              - generic: "37"
+              - generic: "38"
+              - generic: "39"
+              - generic: "40"
+              - generic: "41"
+              - generic: "42"
+              - generic: "43"
+              - generic: "44"
+              - generic: "45"
+              - generic: "46"
+              - generic: "47"
+              - generic: "48"
+              - generic: "49"
+              - generic: "50"
+              - generic: "51"
+              - generic: "52"
+              - generic: "53"
+              - generic: "54"
+              - generic: "55"
+              - generic: "56"
+              - generic: "57"
+              - generic: "58"
+              - generic: "59"
+              - generic: "60"
+              - generic: "61"
+              - generic: "62"
+              - generic: "63"
+              - generic: "64"
+              - generic: "65"
+              - generic: "66"
+              - generic: "67"
+              - generic: "68"
+            - generic:
+              - code: SELECT * FROM ( SELECT Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, SUM (Amount) AS AMOUNT, BAL_TYPE FROM ( SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' AND NVL (C.IS_CONV, 'N') = 'N' AND AV.TRN_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY UNION ALL SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code NOT IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' AND NVL (C.IS_CONV, 'N') = 'N' AND AV.value_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY) WHERE amount <> 0 GROUP BY Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, BAL_TYPE)
+            - textbox "-- Paste a slow Oracle query here…" [ref=e79]: SELECT * FROM ( SELECT Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, SUM (Amount) AS AMOUNT, BAL_TYPE FROM ( SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' AND NVL (C.IS_CONV, 'N') = 'N' AND AV.TRN_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY UNION ALL SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code NOT IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' AND NVL (C.IS_CONV, 'N') = 'N' AND AV.value_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY) WHERE amount <> 0 GROUP BY Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, BAL_TYPE)
+          - generic [ref=e80]:
+            - generic [ref=e81]: "Try:"
+            - button "Slow JOIN" [ref=e82]
+            - button "Subquery → JOIN" [ref=e83]
+            - button "SELECT *" [ref=e84]
+            - generic [ref=e87]: Live DB
+        - generic [ref=e264]:
+          - generic [ref=e265]:
+            - button "Execution plan" [ref=e266]:
+              - img [ref=e267]
+              - text: Execution plan
+            - button "Rule hits 6" [ref=e270]:
+              - img [ref=e271]
+              - text: Rule hits
+              - generic [ref=e273]: "6"
+            - button "AI rewrite" [ref=e274]:
+              - img [ref=e275]
+              - text: AI rewrite
+            - button "Benchmark" [ref=e277]:
+              - img [ref=e278]
+              - text: Benchmark
+            - button "Export JSON" [ref=e282] [cursor=pointer]:
+              - img [ref=e283]
+              - generic [ref=e286]: Export JSON
+          - generic [ref=e288]:
+            - img [ref=e290]
+            - generic [ref=e292]:
+              - generic [ref=e293]: Oracle analysis complete in 604.68 ms — 5 rule(s) triggered (1 high · 5 medium · 0 low).
+              - generic [ref=e294]:
+                - generic [ref=e295]:
+                  - img [ref=e296]
+                  - generic [ref=e299]: Cost
+                  - generic [ref=e300]: 5,276 → 5,276
+                  - generic [ref=e301]: (−0%)
+                - generic [ref=e302]:
+                  - img [ref=e303]
+                  - generic [ref=e306]: Time
+                  - generic [ref=e307]: 604.68ms → 604.68ms
+                  - generic [ref=e308]: (−0%)
+          - generic [ref=e310]:
+            - generic [ref=e311]:
+              - generic [ref=e312]: EXPLAIN PLAN
+              - generic [ref=e313]:
+                - button "Before" [ref=e314]
+                - button "After" [ref=e315]
+            - table [ref=e317]:
+              - rowgroup [ref=e318]:
+                - row "Operation Object Cost Rows Time" [ref=e319]:
+                  - columnheader "Operation" [ref=e320]
+                  - columnheader "Object" [ref=e321]
+                  - columnheader "Cost" [ref=e322]
+                  - columnheader "Rows" [ref=e323]
+                  - columnheader "Time" [ref=e324]
+              - rowgroup [ref=e325]:
+                - row "SELECT STATEMENT — 512 84 00:00:01" [ref=e326]:
+                  - cell "SELECT STATEMENT" [ref=e327]:
+                    - generic [ref=e329]: SELECT STATEMENT
+                  - cell "—" [ref=e330]
+                  - cell "512" [ref=e331]:
+                    - generic [ref=e335]: "512"
+                  - cell "84" [ref=e336]
+                  - cell "00:00:01" [ref=e337]
+                - row "└ PX COORDINATOR — 0 0 —" [ref=e338]:
+                  - cell "└ PX COORDINATOR" [ref=e339]:
+                    - generic [ref=e340]:
+                      - generic [ref=e341]: └
+                      - generic [ref=e342]: PX COORDINATOR
+                  - cell "—" [ref=e343]
+                  - cell "0" [ref=e344]:
+                    - generic [ref=e347]: "0"
+                  - cell "0" [ref=e348]
+                  - cell "—" [ref=e349]
+                - row "└ PX SEND QC (RANDOM) :TQ10009 512 84 00:00:01" [ref=e350]:
+                  - cell "└ PX SEND QC (RANDOM)" [ref=e351]:
+                    - generic [ref=e352]:
+                      - generic [ref=e353]: └
+                      - generic [ref=e354]: PX SEND QC (RANDOM)
+                  - cell ":TQ10009" [ref=e355]
+                  - cell "512" [ref=e356]:
+                    - generic [ref=e360]: "512"
+                  - cell "84" [ref=e361]
+                  - cell "00:00:01" [ref=e362]
+                - row "└ HASH GROUP BY — 512 84 00:00:01" [ref=e363]:
+                  - cell "└ HASH GROUP BY" [ref=e364]:
+                    - generic [ref=e365]:
+                      - generic [ref=e366]: └
+                      - generic [ref=e367]: HASH GROUP BY
+                  - cell "—" [ref=e368]
+                  - cell "512" [ref=e369]:
+                    - generic [ref=e373]: "512"
+                  - cell "84" [ref=e374]
+                  - cell "00:00:01" [ref=e375]
+                - row "└ PX RECEIVE — 512 84 00:00:01" [ref=e376]:
+                  - cell "└ PX RECEIVE" [ref=e377]:
+                    - generic [ref=e378]:
+                      - generic [ref=e379]: └
+                      - generic [ref=e380]: PX RECEIVE
+                  - cell "—" [ref=e381]
+                  - cell "512" [ref=e382]:
+                    - generic [ref=e386]: "512"
+                  - cell "84" [ref=e387]
+                  - cell "00:00:01" [ref=e388]
+                - row "└ PX SEND HASH :TQ10008 512 84 00:00:01" [ref=e389]:
+                  - cell "└ PX SEND HASH" [ref=e390]:
+                    - generic [ref=e391]:
+                      - generic [ref=e392]: └
+                      - generic [ref=e393]: PX SEND HASH
+                  - cell ":TQ10008" [ref=e394]
+                  - cell "512" [ref=e395]:
+                    - generic [ref=e399]: "512"
+                  - cell "84" [ref=e400]
+                  - cell "00:00:01" [ref=e401]
+                - row "└ HASH GROUP BY — 512 84 00:00:01" [ref=e402]:
+                  - cell "└ HASH GROUP BY" [ref=e403]:
+                    - generic [ref=e404]:
+                      - generic [ref=e405]: └
+                      - generic [ref=e406]: HASH GROUP BY
+                  - cell "—" [ref=e407]
+                  - cell "512" [ref=e408]:
+                    - generic [ref=e412]: "512"
+                  - cell "84" [ref=e413]
+                  - cell "00:00:01" [ref=e414]
+                - row "└ VIEW — 527 84 00:00:01" [ref=e415]:
+                  - cell "└ VIEW" [ref=e416]:
+                    - generic [ref=e417]:
+                      - generic [ref=e418]: └
+                      - generic [ref=e419]: VIEW
+                  - cell "—" [ref=e420]
+                  - cell "527" [ref=e421]:
+                    - generic [ref=e425]: "527"
+                  - cell "84" [ref=e426]
+                  - cell "00:00:01" [ref=e427]
+                - row "└ UNION-ALL — 0 0 —" [ref=e428]:
+                  - cell "└ UNION-ALL" [ref=e429]:
+                    - generic [ref=e430]:
+                      - generic [ref=e431]: └
+                      - generic [ref=e432]: UNION-ALL
+                  - cell "—" [ref=e433]
+                  - cell "0" [ref=e434]:
+                    - generic [ref=e437]: "0"
+                  - cell "0" [ref=e438]
+                  - cell "—" [ref=e439]
+                - row "└ FILTER — 0 0 —" [ref=e440]:
+                  - cell "└ FILTER" [ref=e441]:
+                    - generic [ref=e442]:
+                      - generic [ref=e443]: └
+                      - generic [ref=e444]: FILTER
+                  - cell "—" [ref=e445]
+                  - cell "0" [ref=e446]:
+                    - generic [ref=e449]: "0"
+                  - cell "0" [ref=e450]
+                  - cell "—" [ref=e451]
+                - row "└ HASH GROUP BY — 263 42 00:00:01" [ref=e452]:
+                  - cell "└ HASH GROUP BY" [ref=e453]:
+                    - generic [ref=e454]:
+                      - generic [ref=e455]: └
+                      - generic [ref=e456]: HASH GROUP BY
+                  - cell "—" [ref=e457]
+                  - cell "263" [ref=e458]:
+                    - generic [ref=e462]: "263"
+                  - cell "42" [ref=e463]
+                  - cell "00:00:01" [ref=e464]
+                - row "└ PX RECEIVE — 263 42 00:00:01" [ref=e465]:
+                  - cell "└ PX RECEIVE" [ref=e466]:
+                    - generic [ref=e467]:
+                      - generic [ref=e468]: └
+                      - generic [ref=e469]: PX RECEIVE
+                  - cell "—" [ref=e470]
+                  - cell "263" [ref=e471]:
+                    - generic [ref=e475]: "263"
+                  - cell "42" [ref=e476]
+                  - cell "00:00:01" [ref=e477]
+                - row "└ PX SEND HASH :TQ10006 263 42 00:00:01" [ref=e478]:
+                  - cell "└ PX SEND HASH" [ref=e479]:
+                    - generic [ref=e480]:
+                      - generic [ref=e481]: └
+                      - generic [ref=e482]: PX SEND HASH
+                  - cell ":TQ10006" [ref=e483]
+                  - cell "263" [ref=e484]:
+                    - generic [ref=e488]: "263"
+                  - cell "42" [ref=e489]
+                  - cell "00:00:01" [ref=e490]
+                - row "└ HASH GROUP BY — 263 42 00:00:01" [ref=e491]:
+                  - cell "└ HASH GROUP BY" [ref=e492]:
+                    - generic [ref=e493]:
+                      - generic [ref=e494]: └
+                      - generic [ref=e495]: HASH GROUP BY
+                  - cell "—" [ref=e496]
+                  - cell "263" [ref=e497]:
+                    - generic [ref=e501]: "263"
+                  - cell "42" [ref=e502]
+                  - cell "00:00:01" [ref=e503]
+                - row "└ MERGE JOIN — 257 8,698 00:00:01" [ref=e504]:
+                  - cell "└ MERGE JOIN" [ref=e505]:
+                    - generic [ref=e506]:
+                      - generic [ref=e507]: └
+                      - generic [ref=e508]: MERGE JOIN
+                  - cell "—" [ref=e509]
+                  - cell "257" [ref=e510]:
+                    - generic [ref=e514]: "257"
+                  - cell "8,698" [ref=e515]
+                  - cell "00:00:01" [ref=e516]
+                - row "└ SORT JOIN — 14 1,878 00:00:01" [ref=e517]:
+                  - cell "└ SORT JOIN" [ref=e518]:
+                    - generic [ref=e519]:
+                      - generic [ref=e520]: └
+                      - generic [ref=e521]: SORT JOIN
+                  - cell "—" [ref=e522]
+                  - cell "14" [ref=e523]:
+                    - generic [ref=e527]: "14"
+                  - cell "1,878" [ref=e528]
+                  - cell "00:00:01" [ref=e529]
+                - row "└ PX RECEIVE — 13 1,878 00:00:01" [ref=e530]:
+                  - cell "└ PX RECEIVE" [ref=e531]:
+                    - generic [ref=e532]:
+                      - generic [ref=e533]: └
+                      - generic [ref=e534]: PX RECEIVE
+                  - cell "—" [ref=e535]
+                  - cell "13" [ref=e536]:
+                    - generic [ref=e540]: "13"
+                  - cell "1,878" [ref=e541]
+                  - cell "00:00:01" [ref=e542]
+                - row "└ PX SEND HYBRID HASH :TQ10002 13 1,878 00:00:01" [ref=e543]:
+                  - cell "└ PX SEND HYBRID HASH" [ref=e544]:
+                    - generic [ref=e545]:
+                      - generic [ref=e546]: └
+                      - generic [ref=e547]: PX SEND HYBRID HASH
+                  - cell ":TQ10002" [ref=e548]
+                  - cell "13" [ref=e549]:
+                    - generic [ref=e553]: "13"
+                  - cell "1,878" [ref=e554]
+                  - cell "00:00:01" [ref=e555]
+                - row "└ STATISTICS COLLECTOR — 0 0 —" [ref=e556]:
+                  - cell "└ STATISTICS COLLECTOR" [ref=e557]:
+                    - generic [ref=e558]:
+                      - generic [ref=e559]: └
+                      - generic [ref=e560]: STATISTICS COLLECTOR
+                  - cell "—" [ref=e561]
+                  - cell "0" [ref=e562]:
+                    - generic [ref=e565]: "0"
+                  - cell "0" [ref=e566]
+                  - cell "—" [ref=e567]
+                - row "└ MERGE JOIN SEMI — 13 1,878 00:00:01" [ref=e568]:
+                  - cell "└ MERGE JOIN SEMI" [ref=e569]:
+                    - generic [ref=e570]:
+                      - generic [ref=e571]: └
+                      - generic [ref=e572]: MERGE JOIN SEMI
+                  - cell "—" [ref=e573]
+                  - cell "13" [ref=e574]:
+                    - generic [ref=e578]: "13"
+                  - cell "1,878" [ref=e579]
+                  - cell "00:00:01" [ref=e580]
+                - row "└ SORT JOIN — 7 2,004 00:00:01" [ref=e581]:
+                  - cell "└ SORT JOIN" [ref=e582]:
+                    - generic [ref=e583]:
+                      - generic [ref=e584]: └
+                      - generic [ref=e585]: SORT JOIN
+                  - cell "—" [ref=e586]
+                  - cell "7" [ref=e587]:
+                    - generic [ref=e591]: "7"
+                  - cell "2,004" [ref=e592]
+                  - cell "00:00:01" [ref=e593]
+                - row "└ MERGE JOIN CARTESIAN — 6 2,004 00:00:01" [ref=e594]:
+                  - cell "└ MERGE JOIN CARTESIAN" [ref=e595]:
+                    - generic [ref=e596]:
+                      - generic [ref=e597]: └
+                      - generic [ref=e598]: MERGE JOIN CARTESIAN
+                  - cell "—" [ref=e599]
+                  - cell "6" [ref=e600]:
+                    - generic [ref=e604]: "6"
+                  - cell "2,004" [ref=e605]
+                  - cell "00:00:01" [ref=e606]
+                - row "└ PX RECEIVE — 1 1 00:00:01" [ref=e607]:
+                  - cell "└ PX RECEIVE" [ref=e608]:
+                    - generic [ref=e609]:
+                      - generic [ref=e610]: └
+                      - generic [ref=e611]: PX RECEIVE
+                  - cell "—" [ref=e612]
+                  - cell "1" [ref=e613]:
+                    - generic [ref=e617]: "1"
+                  - cell "1" [ref=e618]
+                  - cell "00:00:01" [ref=e619]
+                - row "└ PX SEND BROADCAST :TQ10000 1 1 00:00:01" [ref=e620]:
+                  - cell "└ PX SEND BROADCAST" [ref=e621]:
+                    - generic [ref=e622]:
+                      - generic [ref=e623]: └
+                      - generic [ref=e624]: PX SEND BROADCAST
+                  - cell ":TQ10000" [ref=e625]
+                  - cell "1" [ref=e626]:
+                    - generic [ref=e630]: "1"
+                  - cell "1" [ref=e631]
+                  - cell "00:00:01" [ref=e632]
+                - row "└ PX SELECTOR — 0 0 —" [ref=e633]:
+                  - cell "└ PX SELECTOR" [ref=e634]:
+                    - generic [ref=e635]:
+                      - generic [ref=e636]: └
+                      - generic [ref=e637]: PX SELECTOR
+                  - cell "—" [ref=e638]
+                  - cell "0" [ref=e639]:
+                    - generic [ref=e642]: "0"
+                  - cell "0" [ref=e643]
+                  - cell "—" [ref=e644]
+                - row "└ TABLE ACCESS BY INDEX ROWID BATCHED STTM_BRANCH_ISLAMIC_CUSTOM 1 1 00:00:01" [ref=e645]:
+                  - cell "└ TABLE ACCESS BY INDEX ROWID BATCHED" [ref=e646]:
+                    - generic [ref=e647]:
+                      - generic [ref=e648]: └
+                      - generic [ref=e649]: TABLE ACCESS BY INDEX ROWID BATCHED
+                  - cell "STTM_BRANCH_ISLAMIC_CUSTOM" [ref=e650]
+                  - cell "1" [ref=e651]:
+                    - generic [ref=e655]: "1"
+                  - cell "1" [ref=e656]
+                  - cell "00:00:01" [ref=e657]
+                - row "└ INDEX SKIP SCAN PK_BRANCH_ISLAMIC_CUSTOM 1 1 00:00:01" [ref=e658]:
+                  - cell "└ INDEX SKIP SCAN" [ref=e659]:
+                    - generic [ref=e660]:
+                      - generic [ref=e661]: └
+                      - generic [ref=e662]: INDEX SKIP SCAN
+                  - cell "PK_BRANCH_ISLAMIC_CUSTOM" [ref=e663]
+                  - cell "1" [ref=e664]:
+                    - generic [ref=e668]: "1"
+                  - cell "1" [ref=e669]
+                  - cell "00:00:01" [ref=e670]
+                - row "└ BUFFER SORT — 5 2,004 00:00:01" [ref=e671]:
+                  - cell "└ BUFFER SORT" [ref=e672]:
+                    - generic [ref=e673]:
+                      - generic [ref=e674]: └
+                      - generic [ref=e675]: BUFFER SORT
+                  - cell "—" [ref=e676]
+                  - cell "5" [ref=e677]:
+                    - generic [ref=e681]: "5"
+                  - cell "2,004" [ref=e682]
+                  - cell "00:00:01" [ref=e683]
+                - row "└ PX BLOCK ITERATOR — 5 2,004 00:00:01" [ref=e684]:
+                  - cell "└ PX BLOCK ITERATOR" [ref=e685]:
+                    - generic [ref=e686]:
+                      - generic [ref=e687]: └
+                      - generic [ref=e688]: PX BLOCK ITERATOR
+                  - cell "—" [ref=e689]
+                  - cell "5" [ref=e690]:
+                    - generic [ref=e694]: "5"
+                  - cell "2,004" [ref=e695]
+                  - cell "00:00:01" [ref=e696]
+                - row "└ INDEX FAST FULL SCAN PK01_IATM_EQUITY_GLS 5 2,004 00:00:01" [ref=e697]:
+                  - cell "└ INDEX FAST FULL SCAN" [ref=e698]:
+                    - generic [ref=e699]:
+                      - generic [ref=e700]: └
+                      - generic [ref=e701]: INDEX FAST FULL SCAN
+                  - cell "PK01_IATM_EQUITY_GLS" [ref=e702]
+                  - cell "5" [ref=e703]:
+                    - generic [ref=e707]: "5"
+                  - cell "2,004" [ref=e708]
+                  - cell "00:00:01" [ref=e709]
+                - row "└ SORT UNIQUE — 6 1,502 00:00:01" [ref=e710]:
+                  - cell "└ SORT UNIQUE" [ref=e711]:
+                    - generic [ref=e712]:
+                      - generic [ref=e713]: └
+                      - generic [ref=e714]: SORT UNIQUE
+                  - cell "—" [ref=e715]
+                  - cell "6" [ref=e716]:
+                    - generic [ref=e720]: "6"
+                  - cell "1,502" [ref=e721]
+                  - cell "00:00:01" [ref=e722]
+                - row "└ INDEX FAST FULL SCAN PK01_IATM_EQUITY_GLS 5 1,502 00:00:01" [ref=e723]:
+                  - cell "└ INDEX FAST FULL SCAN" [ref=e724]:
+                    - generic [ref=e725]:
+                      - generic [ref=e726]: └
+                      - generic [ref=e727]: INDEX FAST FULL SCAN
+                  - cell "PK01_IATM_EQUITY_GLS" [ref=e728]
+                  - cell "5" [ref=e729]:
+                    - generic [ref=e733]: "5"
+                  - cell "1,502" [ref=e734]
+                  - cell "00:00:01" [ref=e735]
+                - row "└ SORT JOIN — 243 6,305 00:00:01" [ref=e736]:
+                  - cell "└ SORT JOIN" [ref=e737]:
+                    - generic [ref=e738]:
+                      - generic [ref=e739]: └
+                      - generic [ref=e740]: SORT JOIN
+                  - cell "—" [ref=e741]
+                  - cell "243" [ref=e742]:
+                    - generic [ref=e746]: "243"
+                  - cell "6,305" [ref=e747]
+                  - cell "00:00:01" [ref=e748]
+                - row "└ PX RECEIVE — 242 6,305 00:00:01" [ref=e749]:
+                  - cell "└ PX RECEIVE" [ref=e750]:
+                    - generic [ref=e751]:
+                      - generic [ref=e752]: └
+                      - generic [ref=e753]: PX RECEIVE
+                  - cell "—" [ref=e754]
+                  - cell "242" [ref=e755]:
+                    - generic [ref=e759]: "242"
+                  - cell "6,305" [ref=e760]
+                  - cell "00:00:01" [ref=e761]
+                - row "└ PX SEND HYBRID HASH :TQ10003 242 6,305 00:00:01" [ref=e762]:
+                  - cell "└ PX SEND HYBRID HASH" [ref=e763]:
+                    - generic [ref=e764]:
+                      - generic [ref=e765]: └
+                      - generic [ref=e766]: PX SEND HYBRID HASH
+                  - cell ":TQ10003" [ref=e767]
+                  - cell "242" [ref=e768]:
+                    - generic [ref=e772]: "242"
+                  - cell "6,305" [ref=e773]
+                  - cell "00:00:01" [ref=e774]
+                - row "└ PX SELECTOR — 0 0 —" [ref=e775]:
+                  - cell "└ PX SELECTOR" [ref=e776]:
+                    - generic [ref=e777]:
+                      - generic [ref=e778]: └
+                      - generic [ref=e779]: PX SELECTOR
+                  - cell "—" [ref=e780]
+                  - cell "0" [ref=e781]:
+                    - generic [ref=e784]: "0"
+                  - cell "0" [ref=e785]
+                  - cell "—" [ref=e786]
+                - row "└ TABLE ACCESS BY INDEX ROWID BATCHED ACTB_HISTORY 242 6,305 00:00:01" [ref=e787]:
+                  - cell "└ TABLE ACCESS BY INDEX ROWID BATCHED" [ref=e788]:
+                    - generic [ref=e789]:
+                      - generic [ref=e790]: └
+                      - generic [ref=e791]: TABLE ACCESS BY INDEX ROWID BATCHED
+                  - cell "ACTB_HISTORY" [ref=e792]
+                  - cell "242" [ref=e793]:
+                    - generic [ref=e797]: "242"
+                  - cell "6,305" [ref=e798]
+                  - cell "00:00:01" [ref=e799]
+                - row "└ INDEX RANGE SCAN IX01_ACTB_HISTORY 25 9,377 00:00:01" [ref=e800]:
+                  - cell "└ INDEX RANGE SCAN" [ref=e801]:
+                    - generic [ref=e802]:
+                      - generic [ref=e803]: └
+                      - generic [ref=e804]: INDEX RANGE SCAN
+                  - cell "IX01_ACTB_HISTORY" [ref=e805]
+                  - cell "25" [ref=e806]:
+                    - generic [ref=e810]: "25"
+                  - cell "9,377" [ref=e811]
+                  - cell "00:00:01" [ref=e812]
+                - row "└ FILTER — 0 0 —" [ref=e813]:
+                  - cell "└ FILTER" [ref=e814]:
+                    - generic [ref=e815]:
+                      - generic [ref=e816]: └
+                      - generic [ref=e817]: FILTER
+                  - cell "—" [ref=e818]
+                  - cell "0" [ref=e819]:
+                    - generic [ref=e822]: "0"
+                  - cell "0" [ref=e823]
+                  - cell "—" [ref=e824]
+                - row "└ HASH GROUP BY — 263 42 00:00:01" [ref=e825]:
+                  - cell "└ HASH GROUP BY" [ref=e826]:
+                    - generic [ref=e827]:
+                      - generic [ref=e828]: └
+                      - generic [ref=e829]: HASH GROUP BY
+                  - cell "—" [ref=e830]
+                  - cell "263" [ref=e831]:
+                    - generic [ref=e835]: "263"
+                  - cell "42" [ref=e836]
+                  - cell "00:00:01" [ref=e837]
+                - row "└ PX RECEIVE — 263 42 00:00:01" [ref=e838]:
+                  - cell "└ PX RECEIVE" [ref=e839]:
+                    - generic [ref=e840]:
+                      - generic [ref=e841]: └
+                      - generic [ref=e842]: PX RECEIVE
+                  - cell "—" [ref=e843]
+                  - cell "263" [ref=e844]:
+                    - generic [ref=e848]: "263"
+                  - cell "42" [ref=e849]
+                  - cell "00:00:01" [ref=e850]
+                - row "└ PX SEND HASH :TQ10007 263 42 00:00:01" [ref=e851]:
+                  - cell "└ PX SEND HASH" [ref=e852]:
+                    - generic [ref=e853]:
+                      - generic [ref=e854]: └
+                      - generic [ref=e855]: PX SEND HASH
+                  - cell ":TQ10007" [ref=e856]
+                  - cell "263" [ref=e857]:
+                    - generic [ref=e861]: "263"
+                  - cell "42" [ref=e862]
+                  - cell "00:00:01" [ref=e863]
+                - row "└ HASH GROUP BY — 263 42 00:00:01" [ref=e864]:
+                  - cell "└ HASH GROUP BY" [ref=e865]:
+                    - generic [ref=e866]:
+                      - generic [ref=e867]: └
+                      - generic [ref=e868]: HASH GROUP BY
+                  - cell "—" [ref=e869]
+                  - cell "263" [ref=e870]:
+                    - generic [ref=e874]: "263"
+                  - cell "42" [ref=e875]
+                  - cell "00:00:01" [ref=e876]
+                - row "└ MERGE JOIN — 257 2,126 00:00:01" [ref=e877]:
+                  - cell "└ MERGE JOIN" [ref=e878]:
+                    - generic [ref=e879]:
+                      - generic [ref=e880]: └
+                      - generic [ref=e881]: MERGE JOIN
+                  - cell "—" [ref=e882]
+                  - cell "257" [ref=e883]:
+                    - generic [ref=e887]: "257"
+                  - cell "2,126" [ref=e888]
+                  - cell "00:00:01" [ref=e889]
+                - row "└ SORT JOIN — 14 126 00:00:01" [ref=e890]:
+                  - cell "└ SORT JOIN" [ref=e891]:
+                    - generic [ref=e892]:
+                      - generic [ref=e893]: └
+                      - generic [ref=e894]: SORT JOIN
+                  - cell "—" [ref=e895]
+                  - cell "14" [ref=e896]:
+                    - generic [ref=e900]: "14"
+                  - cell "126" [ref=e901]
+                  - cell "00:00:01" [ref=e902]
+                - row "└ PX RECEIVE — 13 126 00:00:01" [ref=e903]:
+                  - cell "└ PX RECEIVE" [ref=e904]:
+                    - generic [ref=e905]:
+                      - generic [ref=e906]: └
+                      - generic [ref=e907]: PX RECEIVE
+                  - cell "—" [ref=e908]
+                  - cell "13" [ref=e909]:
+                    - generic [ref=e913]: "13"
+                  - cell "126" [ref=e914]
+                  - cell "00:00:01" [ref=e915]
+                - row "└ PX SEND HYBRID HASH :TQ10004 13 126 00:00:01" [ref=e916]:
+                  - cell "└ PX SEND HYBRID HASH" [ref=e917]:
+                    - generic [ref=e918]:
+                      - generic [ref=e919]: └
+                      - generic [ref=e920]: PX SEND HYBRID HASH
+                  - cell ":TQ10004" [ref=e921]
+                  - cell "13" [ref=e922]:
+                    - generic [ref=e926]: "13"
+                  - cell "126" [ref=e927]
+                  - cell "00:00:01" [ref=e928]
+                - row "└ STATISTICS COLLECTOR — 0 0 —" [ref=e929]:
+                  - cell "└ STATISTICS COLLECTOR" [ref=e930]:
+                    - generic [ref=e931]:
+                      - generic [ref=e932]: └
+                      - generic [ref=e933]: STATISTICS COLLECTOR
+                  - cell "—" [ref=e934]
+                  - cell "0" [ref=e935]:
+                    - generic [ref=e938]: "0"
+                  - cell "0" [ref=e939]
+                  - cell "—" [ref=e940]
+                - row "└ MERGE JOIN ANTI — 13 126 00:00:01" [ref=e941]:
+                  - cell "└ MERGE JOIN ANTI" [ref=e942]:
+                    - generic [ref=e943]:
+                      - generic [ref=e944]: └
+                      - generic [ref=e945]: MERGE JOIN ANTI
+                  - cell "—" [ref=e946]
+                  - cell "13" [ref=e947]:
+                    - generic [ref=e951]: "13"
+                  - cell "126" [ref=e952]
+                  - cell "00:00:01" [ref=e953]
+                - row "└ SORT JOIN — 7 2,004 00:00:01" [ref=e954]:
+                  - cell "└ SORT JOIN" [ref=e955]:
+                    - generic [ref=e956]:
+                      - generic [ref=e957]: └
+                      - generic [ref=e958]: SORT JOIN
+                  - cell "—" [ref=e959]
+                  - cell "7" [ref=e960]:
+                    - generic [ref=e964]: "7"
+                  - cell "2,004" [ref=e965]
+                  - cell "00:00:01" [ref=e966]
+                - row "└ MERGE JOIN CARTESIAN — 6 2,004 00:00:01" [ref=e967]:
+                  - cell "└ MERGE JOIN CARTESIAN" [ref=e968]:
+                    - generic [ref=e969]:
+                      - generic [ref=e970]: └
+                      - generic [ref=e971]: MERGE JOIN CARTESIAN
+                  - cell "—" [ref=e972]
+                  - cell "6" [ref=e973]:
+                    - generic [ref=e977]: "6"
+                  - cell "2,004" [ref=e978]
+                  - cell "00:00:01" [ref=e979]
+                - row "└ PX RECEIVE — 1 1 00:00:01" [ref=e980]:
+                  - cell "└ PX RECEIVE" [ref=e981]:
+                    - generic [ref=e982]:
+                      - generic [ref=e983]: └
+                      - generic [ref=e984]: PX RECEIVE
+                  - cell "—" [ref=e985]
+                  - cell "1" [ref=e986]:
+                    - generic [ref=e990]: "1"
+                  - cell "1" [ref=e991]
+                  - cell "00:00:01" [ref=e992]
+                - row "└ PX SEND BROADCAST :TQ10001 1 1 00:00:01" [ref=e993]:
+                  - cell "└ PX SEND BROADCAST" [ref=e994]:
+                    - generic [ref=e995]:
+                      - generic [ref=e996]: └
+                      - generic [ref=e997]: PX SEND BROADCAST
+                  - cell ":TQ10001" [ref=e998]
+                  - cell "1" [ref=e999]:
+                    - generic [ref=e1003]: "1"
+                  - cell "1" [ref=e1004]
+                  - cell "00:00:01" [ref=e1005]
+                - row "└ PX SELECTOR — 0 0 —" [ref=e1006]:
+                  - cell "└ PX SELECTOR" [ref=e1007]:
+                    - generic [ref=e1008]:
+                      - generic [ref=e1009]: └
+                      - generic [ref=e1010]: PX SELECTOR
+                  - cell "—" [ref=e1011]
+                  - cell "0" [ref=e1012]:
+                    - generic [ref=e1015]: "0"
+                  - cell "0" [ref=e1016]
+                  - cell "—" [ref=e1017]
+                - row "└ TABLE ACCESS BY INDEX ROWID BATCHED STTM_BRANCH_ISLAMIC_CUSTOM 1 1 00:00:01" [ref=e1018]:
+                  - cell "└ TABLE ACCESS BY INDEX ROWID BATCHED" [ref=e1019]:
+                    - generic [ref=e1020]:
+                      - generic [ref=e1021]: └
+                      - generic [ref=e1022]: TABLE ACCESS BY INDEX ROWID BATCHED
+                  - cell "STTM_BRANCH_ISLAMIC_CUSTOM" [ref=e1023]
+                  - cell "1" [ref=e1024]:
+                    - generic [ref=e1028]: "1"
+                  - cell "1" [ref=e1029]
+                  - cell "00:00:01" [ref=e1030]
+                - row "└ INDEX SKIP SCAN PK_BRANCH_ISLAMIC_CUSTOM 1 1 00:00:01" [ref=e1031]:
+                  - cell "└ INDEX SKIP SCAN" [ref=e1032]:
+                    - generic [ref=e1033]:
+                      - generic [ref=e1034]: └
+                      - generic [ref=e1035]: INDEX SKIP SCAN
+                  - cell "PK_BRANCH_ISLAMIC_CUSTOM" [ref=e1036]
+                  - cell "1" [ref=e1037]:
+                    - generic [ref=e1041]: "1"
+                  - cell "1" [ref=e1042]
+                  - cell "00:00:01" [ref=e1043]
+                - row "└ BUFFER SORT — 5 2,004 00:00:01" [ref=e1044]:
+                  - cell "└ BUFFER SORT" [ref=e1045]:
+                    - generic [ref=e1046]:
+                      - generic [ref=e1047]: └
+                      - generic [ref=e1048]: BUFFER SORT
+                  - cell "—" [ref=e1049]
+                  - cell "5" [ref=e1050]:
+                    - generic [ref=e1054]: "5"
+                  - cell "2,004" [ref=e1055]
+                  - cell "00:00:01" [ref=e1056]
+                - row "└ PX BLOCK ITERATOR — 5 2,004 00:00:01" [ref=e1057]:
+                  - cell "└ PX BLOCK ITERATOR" [ref=e1058]:
+                    - generic [ref=e1059]:
+                      - generic [ref=e1060]: └
+                      - generic [ref=e1061]: PX BLOCK ITERATOR
+                  - cell "—" [ref=e1062]
+                  - cell "5" [ref=e1063]:
+                    - generic [ref=e1067]: "5"
+                  - cell "2,004" [ref=e1068]
+                  - cell "00:00:01" [ref=e1069]
+                - row "└ INDEX FAST FULL SCAN PK01_IATM_EQUITY_GLS 5 2,004 00:00:01" [ref=e1070]:
+                  - cell "└ INDEX FAST FULL SCAN" [ref=e1071]:
+                    - generic [ref=e1072]:
+                      - generic [ref=e1073]: └
+                      - generic [ref=e1074]: INDEX FAST FULL SCAN
+                  - cell "PK01_IATM_EQUITY_GLS" [ref=e1075]
+                  - cell "5" [ref=e1076]:
+                    - generic [ref=e1080]: "5"
+                  - cell "2,004" [ref=e1081]
+                  - cell "00:00:01" [ref=e1082]
+                - row "└ SORT UNIQUE — 6 1,502 00:00:01" [ref=e1083]:
+                  - cell "└ SORT UNIQUE" [ref=e1084]:
+                    - generic [ref=e1085]:
+                      - generic [ref=e1086]: └
+                      - generic [ref=e1087]: SORT UNIQUE
+                  - cell "—" [ref=e1088]
+                  - cell "6" [ref=e1089]:
+                    - generic [ref=e1093]: "6"
+                  - cell "1,502" [ref=e1094]
+                  - cell "00:00:01" [ref=e1095]
+                - row "└ INDEX FAST FULL SCAN PK01_IATM_EQUITY_GLS 5 1,502 00:00:01" [ref=e1096]:
+                  - cell "└ INDEX FAST FULL SCAN" [ref=e1097]:
+                    - generic [ref=e1098]:
+                      - generic [ref=e1099]: └
+                      - generic [ref=e1100]: INDEX FAST FULL SCAN
+                  - cell "PK01_IATM_EQUITY_GLS" [ref=e1101]
+                  - cell "5" [ref=e1102]:
+                    - generic [ref=e1106]: "5"
+                  - cell "1,502" [ref=e1107]
+                  - cell "00:00:01" [ref=e1108]
+                - row "└ SORT JOIN — 243 6,943 00:00:01" [ref=e1109]:
+                  - cell "└ SORT JOIN" [ref=e1110]:
+                    - generic [ref=e1111]:
+                      - generic [ref=e1112]: └
+                      - generic [ref=e1113]: SORT JOIN
+                  - cell "—" [ref=e1114]
+                  - cell "243" [ref=e1115]:
+                    - generic [ref=e1119]: "243"
+                  - cell "6,943" [ref=e1120]
+                  - cell "00:00:01" [ref=e1121]
+                - row "└ PX RECEIVE — 242 6,943 00:00:01" [ref=e1122]:
+                  - cell "└ PX RECEIVE" [ref=e1123]:
+                    - generic [ref=e1124]:
+                      - generic [ref=e1125]: └
+                      - generic [ref=e1126]: PX RECEIVE
+                  - cell "—" [ref=e1127]
+                  - cell "242" [ref=e1128]:
+                    - generic [ref=e1132]: "242"
+                  - cell "6,943" [ref=e1133]
+                  - cell "00:00:01" [ref=e1134]
+                - row "└ PX SEND HYBRID HASH :TQ10005 242 6,943 00:00:01" [ref=e1135]:
+                  - cell "└ PX SEND HYBRID HASH" [ref=e1136]:
+                    - generic [ref=e1137]:
+                      - generic [ref=e1138]: └
+                      - generic [ref=e1139]: PX SEND HYBRID HASH
+                  - cell ":TQ10005" [ref=e1140]
+                  - cell "242" [ref=e1141]:
+                    - generic [ref=e1145]: "242"
+                  - cell "6,943" [ref=e1146]
+                  - cell "00:00:01" [ref=e1147]
+                - row "└ PX SELECTOR — 0 0 —" [ref=e1148]:
+                  - cell "└ PX SELECTOR" [ref=e1149]:
+                    - generic [ref=e1150]:
+                      - generic [ref=e1151]: └
+                      - generic [ref=e1152]: PX SELECTOR
+                  - cell "—" [ref=e1153]
+                  - cell "0" [ref=e1154]:
+                    - generic [ref=e1157]: "0"
+                  - cell "0" [ref=e1158]
+                  - cell "—" [ref=e1159]
+                - row "└ TABLE ACCESS BY INDEX ROWID BATCHED ACTB_HISTORY 242 6,943 00:00:01" [ref=e1160]:
+                  - cell "└ TABLE ACCESS BY INDEX ROWID BATCHED" [ref=e1161]:
+                    - generic [ref=e1162]:
+                      - generic [ref=e1163]: └
+                      - generic [ref=e1164]: TABLE ACCESS BY INDEX ROWID BATCHED
+                  - cell "ACTB_HISTORY" [ref=e1165]
+                  - cell "242" [ref=e1166]:
+                    - generic [ref=e1170]: "242"
+                  - cell "6,943" [ref=e1171]
+                  - cell "00:00:01" [ref=e1172]
+                - row "└ INDEX RANGE SCAN IX01_ACTB_HISTORY 25 9,377 00:00:01" [ref=e1173]:
+                  - cell "└ INDEX RANGE SCAN" [ref=e1174]:
+                    - generic [ref=e1175]:
+                      - generic [ref=e1176]: └
+                      - generic [ref=e1177]: INDEX RANGE SCAN
+                  - cell "IX01_ACTB_HISTORY" [ref=e1178]
+                  - cell "25" [ref=e1179]:
+                    - generic [ref=e1183]: "25"
+                  - cell "9,377" [ref=e1184]
+                  - cell "00:00:01" [ref=e1185]
+            - generic [ref=e1186]:
+              - generic [ref=e1187]: Full scan
+              - generic [ref=e1189]: Index access
+              - generic [ref=e1191]: Other
+  - button "Open Next.js Dev Tools" [ref=e125] [cursor=pointer]:
+    - img [ref=e126]
+  - alert [ref=e171]

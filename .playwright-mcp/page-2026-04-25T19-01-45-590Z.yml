@@ -1,0 +1,199 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e19]:
+          - generic [ref=e20]: QueryMind AI
+          - generic [ref=e23]: Oracle Bridge Live
+      - generic [ref=e24]:
+        - generic [ref=e25]: Engine
+        - generic [ref=e26]:
+          - button "SQL Optimizer Oracle + AI + Benchmark" [ref=e27]:
+            - img [ref=e29]
+            - generic [ref=e34]:
+              - generic [ref=e35]: SQL Optimizer
+              - generic [ref=e36]: Oracle + AI + Benchmark
+          - button "DB Assistant General Q&A" [ref=e37]:
+            - img [ref=e39]
+            - generic [ref=e41]:
+              - generic [ref=e42]: DB Assistant
+              - generic [ref=e43]: General Q&A
+      - generic [ref=e44]:
+        - generic [ref=e45]: Pipeline
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: EXPLAIN PLAN
+            - generic [ref=e49]: Oracle
+          - generic [ref=e50]:
+            - generic [ref=e51]: 7-Rule Engine
+            - generic [ref=e52]: Oracle
+          - generic [ref=e53]:
+            - generic [ref=e54]: AI Rewrite
+            - generic [ref=e55]: Claude
+          - generic [ref=e56]:
+            - generic [ref=e57]: Benchmark
+            - generic [ref=e58]: Oracle
+      - generic [ref=e59]:
+        - generic [ref=e60]: History
+        - generic [ref=e153]:
+          - generic [ref=e154]: SELECT * FROM ( SELECT Calc_date, …
+          - generic [ref=e155]:
+            - generic [ref=e156]: WARNINGS
+            - generic [ref=e157]: 7 rules
+      - button "FLEXCUBE 172.20.3.77:1521/FCUBS" [ref=e158]:
+        - generic [ref=e159]:
+          - img [ref=e160]
+          - generic [ref=e163]:
+            - generic [ref=e164]: FLEXCUBE
+            - generic [ref=e165]: 172.20.3.77:1521/FCUBS
+        - img [ref=e166]
+    - main [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: SQL Optimizer
+          - generic [ref=e70]: Oracle + AI + Benchmark
+        - generic [ref=e71]: Ready
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - img [ref=e104]
+          - generic [ref=e106]:
+            - generic [ref=e107]:
+              - generic [ref=e108]: QueryMind AI
+              - generic [ref=e109]: 11:58 PM
+            - generic [ref=e111]:
+              - paragraph [ref=e112]:
+                - text: Welcome to the
+                - strong [ref=e113]: SQL Optimizer
+                - text: .
+              - paragraph [ref=e114]:
+                - text: Paste an Oracle SELECT query. The DB runs
+                - strong [ref=e115]: EXPLAIN PLAN
+                - text: + the 7-rule engine, AI rewrites it, and the DB then benchmarks the candidates to pick the real winner.
+              - generic [ref=e116]:
+                - generic [ref=e117]: EXPLAIN PLAN
+                - generic [ref=e118]: 7 Rules
+                - generic [ref=e119]: AI Rewrite
+                - generic [ref=e120]: Live Benchmark
+                - generic [ref=e121]: Speedup
+        - generic [ref=e168]:
+          - img [ref=e170]
+          - generic [ref=e173]:
+            - generic [ref=e174]:
+              - generic [ref=e175]: You
+              - generic [ref=e176]: 11:59 PM
+            - generic [ref=e178]: SELECT * FROM ( SELECT Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, SUM (Amount) AS AMOUNT, BAL_TYPE FROM ( SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' --IBW Handling AND NVL (C.IS_CONV, 'N') = 'N' --IBW Handling AND AV.TRN_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY UNION ALL SELECT DISTINCT '07-FEB-2020' AS Calc_date, AV.AC_BRANCH AS BRANCH_CODE, a.gl_code, 'EQUITY' AS ACCOUNT_CLASS, AV.AC_CCY, SUM ( NVL ( DECODE (AV.DRCR_IND, 'C', AV.LCY_AMOUNT, -AV.LCY_AMOUNT), 0)) AS Amount, 'D' AS BAL_TYPE FROM IATM_EQUITY_GLS A, ACTB_HISTORY AV, STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code NOT IN (SELECT gl_code FROM IATM_EQUITY_GLS WHERE GL_CODE LIKE '1%' OR GL_CODE LIKE '2%') AND AV.AC_NO = A.GL_CODE AND AV.AC_BRANCH = '114' AND C.BRANCH_CODE = '114' --IBW Handling AND NVL (C.IS_CONV, 'N') = 'N' --IBW Handling AND AV.value_DT <= '07-FEB-2020' GROUP BY AV.AC_BRANCH, a.gl_code, AV.AC_CCY) WHERE amount <> 0 GROUP BY Calc_date, BRANCH_CODE, gl_code, ACCOUNT_CLASS, AC_CCY, BAL_TYPE);
+        - generic [ref=e179]:
+          - img [ref=e181]
+          - generic [ref=e183]:
+            - generic [ref=e184]:
+              - generic [ref=e185]: QueryMind AI
+              - generic [ref=e186]: 11:59 PM
+            - generic [ref=e187]:
+              - generic [ref=e190]:
+                - generic [ref=e191]:
+                  - img [ref=e192]
+                  - generic [ref=e195]: Oracle Analysis Complete · 105.6ms
+                - generic [ref=e196]:
+                  - img [ref=e197]
+                  - generic [ref=e198]: 7 rules triggered
+              - generic [ref=e199]:
+                - generic [ref=e200]: Triggered Rules
+                - generic [ref=e201]:
+                  - generic [ref=e202] [cursor=pointer]:
+                    - generic [ref=e203]:
+                      - generic [ref=e204]:
+                        - generic [ref=e205]:
+                          - img [ref=e206]
+                          - text: MEDIUM
+                        - generic [ref=e208]: STRUCTURE
+                      - generic [ref=e209]: SELECT_STAR_DETECTED
+                      - generic [ref=e210]: SELECT * detected — every column is fetched, blocking covering index scans
+                    - img [ref=e211]
+                  - generic [ref=e292]:
+                    - generic [ref=e293]:
+                      - generic [ref=e294]: Description
+                      - paragraph [ref=e295]: Query uses SELECT * which retrieves every column in the table, including columns not needed by the application. This inflates I/O, network transfer, buffer cache usage, and prevents Oracle from using covering (index-only) scans.
+                    - generic [ref=e296]:
+                      - generic [ref=e297]: Recommendation
+                      - paragraph [ref=e298]: "Explicitly list only the columns your application consumes. Example: replace SELECT * FROM orders with SELECT id, status, amount FROM orders. This reduces row width, enables index-only access paths, and makes SELECT intent clear."
+                    - generic [ref=e299]:
+                      - generic [ref=e300]: Suggested Fix
+                      - generic [ref=e301]:
+                        - generic [ref=e302]: "-- Replace SELECT * with an explicit column list: -- SELECT col1, col2, col3 FROM ..."
+                        - button [ref=e303]:
+                          - img [ref=e304]
+                - generic [ref=e214] [cursor=pointer]:
+                  - generic [ref=e215]:
+                    - generic [ref=e216]:
+                      - generic [ref=e217]:
+                        - img [ref=e218]
+                        - text: MEDIUM
+                      - generic [ref=e220]: PERFORMANCE
+                    - generic [ref=e221]: FUNCTION_ON_INDEXED_COLUMN
+                    - generic [ref=e222]: Function NVL() wraps column C.IS_CONV inside WHERE — prevents B-tree index usage
+                  - img [ref=e223]
+                - generic [ref=e226] [cursor=pointer]:
+                  - generic [ref=e227]:
+                    - generic [ref=e228]:
+                      - generic [ref=e229]:
+                        - img [ref=e230]
+                        - text: MEDIUM
+                      - generic [ref=e232]: PERFORMANCE
+                    - generic [ref=e233]: FUNCTION_ON_INDEXED_COLUMN
+                    - generic [ref=e234]: Function NVL() wraps column DECODE inside WHERE — prevents B-tree index usage
+                  - img [ref=e235]
+                - generic [ref=e238] [cursor=pointer]:
+                  - generic [ref=e239]:
+                    - generic [ref=e240]:
+                      - generic [ref=e241]:
+                        - img [ref=e242]
+                        - text: MEDIUM
+                      - generic [ref=e244]: PERFORMANCE
+                    - generic [ref=e245]: FUNCTION_ON_INDEXED_COLUMN
+                    - generic [ref=e246]: Function NVL() wraps column C.IS_CONV inside WHERE — prevents B-tree index usage
+                  - img [ref=e247]
+                - generic [ref=e250] [cursor=pointer]:
+                  - generic [ref=e251]:
+                    - generic [ref=e252]:
+                      - generic [ref=e253]:
+                        - img [ref=e254]
+                        - text: MEDIUM
+                      - generic [ref=e256]: PERFORMANCE
+                    - generic [ref=e257]: FUNCTION_ON_INDEXED_COLUMN
+                    - generic [ref=e258]: Function DECODE() wraps column AV.DRCR_IND inside WHERE — prevents B-tree index usage
+                  - img [ref=e259]
+                - generic [ref=e262] [cursor=pointer]:
+                  - generic [ref=e263]:
+                    - generic [ref=e264]:
+                      - generic [ref=e265]:
+                        - img [ref=e266]
+                        - text: MEDIUM
+                      - generic [ref=e268]: STRUCTURE
+                    - generic [ref=e269]: SUBQUERY_CANDIDATE_FOR_JOIN
+                    - generic [ref=e270]: "NOT IN(SELECT) subquery over FROM IATM_EQUITY_GLS — at: STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code NOT IN (SELECT gl_code FROM IATM_EQUITY_GLS"
+                  - img [ref=e271]
+                - generic [ref=e274] [cursor=pointer]:
+                  - generic [ref=e275]:
+                    - generic [ref=e276]:
+                      - generic [ref=e277]:
+                        - img [ref=e278]
+                        - text: MEDIUM
+                      - generic [ref=e280]: STRUCTURE
+                    - generic [ref=e281]: SUBQUERY_CANDIDATE_FOR_JOIN
+                    - generic [ref=e282]: "IN(SELECT) subquery over FROM IATM_EQUITY_GLS — at: STTM_BRANCH_ISLAMIC_CUSTOM C WHERE a.gl_code IN (SELECT gl_code FROM IATM_EQUITY_GLS"
+                  - img [ref=e283]
+              - generic [ref=e285]:
+                - img [ref=e286]
+                - generic [ref=e288]:
+                  - generic [ref=e289]: AI rewrite unavailable
+                  - text: "401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"},\"request_id\":\"req_011CaR19eS72WusHQkrEB8N2\"}"
+      - generic [ref=e75]:
+        - generic [ref=e81]:
+          - textbox "Paste your Oracle SELECT query here… (Ctrl+Enter to analyze)" [ref=e290]
+          - button [disabled] [ref=e83]:
+            - img [ref=e84]
+        - generic [ref=e87]: Oracle SQL Analysis Engine · Press Ctrl+Enter to send
+  - button "Open Next.js Dev Tools" [ref=e97] [cursor=pointer]:
+    - img [ref=e98]
+  - alert [ref=e152]
