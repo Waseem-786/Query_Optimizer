@@ -44,6 +44,80 @@ AS
     END mark_or_seen;
 
     -- ========================================================================
+    -- PRIVATE: strip_comments
+    --   Removes  -- line comments  and  /* block comments */  from the query
+    --   text BEFORE any helper scans it.  Earlier runs hit false negatives
+    --   because line comments after a literal (e.g.  '114'  --IBW Handling )
+    --   confused position-based regex matchers.  Oracle itself ignores SQL
+    --   comments natively in EXPLAIN PLAN, so the stripped text is used only
+    --   inside our text-scanning helpers; the original p_query is still passed
+    --   to extract_sql_window for display so users see their actual source.
+    -- ========================================================================
+    FUNCTION strip_comments (p_text IN VARCHAR2) RETURN VARCHAR2 IS
+        l_buf  VARCHAR2(32767);
+        l_len  PLS_INTEGER;
+        l_i    PLS_INTEGER;
+        l_ch1  VARCHAR2(2);
+        l_end  PLS_INTEGER;
+    BEGIN
+        IF p_text IS NULL THEN RETURN NULL; END IF;
+        l_buf := p_text;
+        l_len := NVL(LENGTH(l_buf), 0);
+        l_i   := 1;
+        --
+        -- Walk char by char.  When we hit a comment we replace its bytes with
+        -- the SAME number of spaces so every offset downstream still matches
+        -- the original text.  REGEXP_REPLACE substitutes a single space — that
+        -- shifted positions and broke extract_subquery_body() for predicates
+        -- that came AFTER a comment.
+        --
+        WHILE l_i <= l_len LOOP
+            l_ch1 := SUBSTR(l_buf, l_i, 2);
+
+            IF l_ch1 = '--' THEN
+                l_end := INSTR(l_buf, CHR(10), l_i);
+                IF l_end = 0 THEN l_end := l_len + 1; END IF;
+                IF l_end - l_i > 0 THEN
+                    l_buf := SUBSTR(l_buf, 1, l_i - 1)
+                          || RPAD(' ', l_end - l_i, ' ')
+                          || SUBSTR(l_buf, l_end);
+                END IF;
+                l_i := l_end;
+
+            ELSIF l_ch1 = '/*' THEN
+                l_end := INSTR(l_buf, '*/', l_i + 2);
+                IF l_end = 0 THEN
+                    l_end := l_len + 1;
+                ELSE
+                    l_end := l_end + 2;
+                END IF;
+                IF l_end - l_i > 0 THEN
+                    l_buf := SUBSTR(l_buf, 1, l_i - 1)
+                          || RPAD(' ', l_end - l_i, ' ')
+                          || SUBSTR(l_buf, l_end);
+                END IF;
+                l_i := l_end;
+
+            ELSIF SUBSTR(l_buf, l_i, 1) = '''' THEN
+                -- Skip past string literal so '--' inside a literal stays put.
+                l_end := INSTR(l_buf, '''', l_i + 1);
+                IF l_end = 0 THEN
+                    l_i := l_len + 1;
+                ELSE
+                    l_i := l_end + 1;
+                END IF;
+
+            ELSE
+                l_i := l_i + 1;
+            END IF;
+        END LOOP;
+
+        RETURN l_buf;
+    EXCEPTION
+        WHEN OTHERS THEN RETURN p_text;
+    END strip_comments;
+
+    -- ========================================================================
     -- PRIVATE: is_sql_function
     --   TRUE when the token is a known SQL function name. Used by predicate
     --   scanners to reject "column" tokens that are actually inner function
@@ -100,7 +174,8 @@ AS
         l_jdepth PLS_INTEGER;
     BEGIN
         IF p_query IS NULL THEN RETURN NULL; END IF;
-        l_text  := DBMS_LOB.SUBSTR(p_query, 32767, 1);
+        -- Strip comments first so position-based scanning never sees them
+        l_text  := strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1));
         l_upper := UPPER(l_text);
         l_len   := NVL(LENGTH(l_upper), 0);
         IF l_len = 0 THEN RETURN l_text; END IF;
@@ -249,7 +324,7 @@ AS
         l_tbl    VARCHAR2(200);
         l_occ    PLS_INTEGER;
     BEGIN
-        l_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         l_occ := 1;
         LOOP
@@ -297,7 +372,7 @@ AS
          || 'BY|FETCH|FIRST|ROWS|ONLY|DISTINCT|UNION|MINUS|INTERSECT|'
          || 'INNER|LEFT|RIGHT|OUTER|CROSS|FULL|INTO|VALUES|RETURNING|';
     BEGIN
-        l_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
         l_where_pos := INSTR(l_upper, ' WHERE ');
         IF l_where_pos = 0 THEN RETURN ''; END IF;
         l_where_str := SUBSTR(l_upper, l_where_pos + 7);
@@ -352,7 +427,7 @@ AS
         l_col    VARCHAR2(200);
         l_occ    PLS_INTEGER;
     BEGIN
-        l_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         -- Pattern 1: JOIN tbl ON alias.col = alias.col
         --   capture both column names from each ON
@@ -421,7 +496,7 @@ AS
         l_col    VARCHAR2(200);
         l_occ    PLS_INTEGER;
     BEGIN
-        l_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         FOR kw IN (
             SELECT ' GROUP BY '  k FROM DUAL UNION ALL
@@ -657,7 +732,7 @@ AS
             '|JOIN|ON|WHERE|GROUP|ORDER|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|'
          || 'HAVING|UNION|MINUS|INTERSECT|AND|OR|FETCH|SELECT|FROM|PARTITION|';
     BEGIN
-        l_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         l_alias := REGEXP_SUBSTR(
             l_upper,
@@ -777,7 +852,7 @@ AS
         l_sample VARCHAR2(1000);
     BEGIN
         p_triggered := FALSE;
-        l_sample    := UPPER(DBMS_LOB.SUBSTR(p_query, 500, 1));
+        l_sample    := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 500, 1)));
 
         IF REGEXP_LIKE(l_sample, 'SELECT\s+\*') THEN
             p_triggered := TRUE;
@@ -809,11 +884,16 @@ AS
         l_blocks    NUMBER;
         l_avg_row   NUMBER;
         l_count     PLS_INTEGER := 0;
+        -- Below this row count a full scan is genuinely the cheapest access
+        -- path (a single block read beats any index lookup overhead). Skip
+        -- the rule entirely for these rather than emit a HIGH-severity
+        -- false-positive that the user has to manually dismiss every time.
+        c_tiny_table_threshold CONSTANT NUMBER := 256;
     BEGIN
         p_triggered := FALSE;
 
         FOR rec IN (
-            SELECT object_name, cost, cardinality
+            SELECT object_name, object_owner, cost, cardinality
             FROM   plan_table
             WHERE  statement_id = p_stmt_id
               AND  operation    = 'TABLE ACCESS'
@@ -821,10 +901,26 @@ AS
               AND  object_name IS NOT NULL
             ORDER BY id
         ) LOOP
-            p_triggered := TRUE;
-            l_count     := l_count + 1;
+            -- Skip DUAL — Oracle's canonical singleton table. Full scan is
+            -- the only access path; flagging it is always noise.
+            IF UPPER(rec.object_name) = 'DUAL' THEN
+                CONTINUE;
+            END IF;
 
             get_table_metrics(rec.object_name, l_real_rows, l_blocks, l_avg_row);
+
+            -- Skip tiny tables. A FULL scan of <256 rows with <2 blocks is
+            -- cheaper than the index lookup it would replace, and ships
+            -- exactly zero actionable advice to the user.
+            IF l_real_rows IS NOT NULL
+               AND l_real_rows <= c_tiny_table_threshold
+               AND NVL(l_blocks, 0) <= 2
+            THEN
+                CONTINUE;
+            END IF;
+
+            p_triggered := TRUE;
+            l_count     := l_count + 1;
 
             l_context := l_context
                 || rec.object_name
@@ -1282,7 +1378,7 @@ AS
         l_pats t_pat_tab := t_pat_tab();
     BEGIN
         p_triggered := FALSE;
-        l_upper     := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper     := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         l_pats.EXTEND(5);
         l_pats(1).kind := 'NOT IN(SELECT)';   l_pats(1).regex := 'NOT\s+IN\s*\(\s*SELECT';
@@ -1441,7 +1537,7 @@ AS
         l_groupby_pos     PLS_INTEGER;
     BEGIN
         p_triggered := FALSE;
-        l_full_upper := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_full_upper := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         l_distinct_pos := REGEXP_INSTR(l_full_upper, '(^|\W)SELECT\s+DISTINCT(\W|$)',
                                        1, 1, 0, 'i');
@@ -1565,7 +1661,7 @@ AS
         l_cnt         NUMBER;
     BEGIN
         p_triggered := FALSE;
-        l_upper     := UPPER(DBMS_LOB.SUBSTR(p_query, 32767, 1));
+        l_upper     := UPPER(strip_comments(DBMS_LOB.SUBSTR(p_query, 32767, 1)));
 
         BEGIN
             SELECT COUNT(*) INTO l_cnt
@@ -2418,14 +2514,35 @@ AS
 
         IF l_query_log_id IS NULL THEN
             query_analyzer_pkg.analyze_query(p_query, l_phase1_report);
+            DECLARE
+                l_p1_status VARCHAR2(20);
+                l_p1_err    VARCHAR2(4000);
             BEGIN
-                SELECT id INTO l_query_log_id
-                FROM   (SELECT id FROM query_plan_log ORDER BY created_at DESC)
-                WHERE  ROWNUM = 1;
-                SELECT analysis_json INTO l_plan_json
-                FROM   query_plan_log WHERE id = l_query_log_id;
+                SELECT id, status, error_message
+                  INTO l_query_log_id, l_p1_status, l_p1_err
+                  FROM (SELECT id, status, error_message
+                          FROM query_plan_log
+                         ORDER BY created_at DESC)
+                 WHERE ROWNUM = 1;
+                -- If Phase 1 failed (e.g. table not found, ORA-00942) the
+                -- meaningful action is to return that error to the caller.
+                -- Previously we silently continued; non-plan-dependent rules
+                -- still fired against the raw text and the user saw a phantom
+                -- "SUCCESS · 1 finding" alongside an empty execution plan.
+                IF l_p1_status = 'ERROR' THEN
+                    p_report := build_error_response(
+                        NVL(l_p1_err, 'Phase 1 analysis failed without details'));
+                    RETURN;
+                END IF;
+                BEGIN
+                    SELECT analysis_json INTO l_plan_json
+                      FROM query_plan_log WHERE id = l_query_log_id;
+                EXCEPTION
+                    WHEN OTHERS THEN l_plan_json := NULL;
+                END;
             EXCEPTION
-                WHEN OTHERS THEN l_query_log_id := -1; l_plan_json := NULL;
+                WHEN NO_DATA_FOUND THEN l_query_log_id := -1; l_plan_json := NULL;
+                WHEN OTHERS         THEN l_query_log_id := -1; l_plan_json := NULL;
             END;
         END IF;
 

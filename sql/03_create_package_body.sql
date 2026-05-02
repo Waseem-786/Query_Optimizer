@@ -479,14 +479,18 @@ AS
         -- ==================================================================
         -- Step 8: Build final JSON report
         -- ==================================================================
+        -- Use DBMS_LOB.SUBSTR rather than TO_CHAR(clob) — TO_CHAR on a CLOB
+        -- larger than the implicit VARCHAR2 limit (32767 bytes in PL/SQL)
+        -- raises ORA-06502 "character string buffer too small". On a SELECT *
+        -- across joined tables the DBMS_XPLAN output easily exceeds that.
         p_report := '{' || CHR(10)
             || '  "status": "' || c_status_ok || '",' || CHR(10)
             || '  "version": "' || c_version || '",' || CHR(10)
             || '  "execution_time_ms": ' || ROUND(l_elapsed_ms, 2) || ',' || CHR(10)
-            || '  "query": "' || REPLACE(SUBSTR(TO_CHAR(p_query), 1, 500), '"', '\"') || '",' || CHR(10)
+            || '  "query": "' || REPLACE(DBMS_LOB.SUBSTR(p_query, 500, 1), '"', '\"') || '",' || CHR(10)
             || '  "analysis": ' || l_analysis_clob || ',' || CHR(10)
             || '  "raw_plan": "' || REPLACE(REPLACE(
-                    SUBSTR(TO_CHAR(l_plan_clob), 1, 2000),
+                    DBMS_LOB.SUBSTR(l_plan_clob, 2000, 1),
                     '"', '\"'),
                     CHR(10), '\n') || '"' || CHR(10)
             || '}';
@@ -498,14 +502,18 @@ AS
 
     EXCEPTION
         WHEN OTHERS THEN
-            p_report := build_error_response('Unexpected error: ' || SQLERRM);
-
+            DECLARE
+                l_outer_msg VARCHAR2(4000) := SQLERRM;
             BEGIN
-                INSERT INTO query_plan_log (query_text, status, error_message)
-                VALUES (p_query, c_status_err, SQLERRM);
-                COMMIT;
-            EXCEPTION
-                WHEN OTHERS THEN NULL; -- Don't let logging failure mask the real error
+                p_report := build_error_response('Unexpected error: ' || l_outer_msg);
+
+                BEGIN
+                    INSERT INTO query_plan_log (query_text, status, error_message)
+                    VALUES (p_query, c_status_err, l_outer_msg);
+                    COMMIT;
+                EXCEPTION
+                    WHEN OTHERS THEN NULL; -- Don't let logging failure mask the real error
+                END;
             END;
     END analyze_query;
 

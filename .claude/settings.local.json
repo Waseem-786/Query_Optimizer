@@ -14,7 +14,26 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_fill_form",
-      "mcp__playwright__browser_wait_for"
+      "mcp__playwright__browser_wait_for",
+      "Bash(node scripts/install-rule-engine.mjs FLEXCUBE flexcube 172.20.3.77:1521/FCUBS)",
+      "Bash(npx tsc *)",
+      "Bash(node scripts/install-validation-engine.mjs FLEXCUBE flexcube 172.20.3.77:1521/FCUBS)",
+      "Bash(node scripts/check-plan.mjs)",
+      "Bash(node scripts/probe-phase1.mjs)",
+      "Bash(node scripts/probe-insert.mjs)",
+      "Bash(node scripts/dump-phase1-source.mjs)",
+      "Bash(node scripts/install-phase1.mjs FLEXCUBE flexcube 172.20.3.77:1521/FCUBS)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_press_key",
+      "Bash(ls c:\\\\\\\\Users\\\\\\\\Admin\\\\\\\\Desktop\\\\\\\\Study\\\\\\\\Gravity\\\\\\\\Query_Optimizer\\\\\\\\sql\\\\\\\\)",
+      "Bash(cd c:\\\\\\\\Users\\\\\\\\Admin\\\\\\\\Desktop\\\\\\\\Study\\\\\\\\Gravity\\\\\\\\Query_Optimizer\\\\\\\\frontend)",
+      "PowerShell(node frontend/scripts/install-rule-engine.mjs FLEXCUBE flexcube 172.20.3.77:1521/FCUBS 2>&1)",
+      "PowerShell(npx --no-install next lint 2>&1)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(npx --no-install tsc --noEmit 2>&1)",
+      "PowerShell(.\\\\node_modules\\\\.bin\\\\tsc --noEmit 2>&1)"
     ]
   }
 }

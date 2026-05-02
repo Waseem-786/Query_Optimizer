@@ -1,15 +1,16 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Project Overview
 
-AI-powered SQL Query Optimizer with two independent layers:
+AI-powered SQL Query Optimizer with three layers, all wired live end-to-end:
 
-- **Backend:** Oracle PL/SQL package (`QUERY_ANALYZER_PKG`) — analyzes queries via `EXPLAIN PLAN`, never executes them
-- **Frontend:** Next.js 16 / React 19 / TypeScript chat UI (`frontend/`)
+- **Oracle backend** — three PL/SQL packages (`QUERY_ANALYZER_PKG`, `RULE_ENGINE_PKG`, `VALIDATION_ENGINE_PKG`). Analysis is non-destructive: `EXPLAIN PLAN`, set comparison via `MINUS`, and timing via `SELECT COUNT(*) FROM (...)`. Never executes the user's query at scale.
+- **Next.js bridge** — Route Handlers in `frontend/app/api/` that talk to Oracle via `oracledb` (thin mode) and to the LLM provider via the `@google/genai` or `@anthropic-ai/sdk` SDK.
+- **Next.js 16 / React 19 / TypeScript UI** — `frontend/components/` with a sidebar (collapsible to a 56 px rail), a SQL editor, and a tabbed results panel (Plan / Rules / Rewrite / Benchmark).
 
-Phase 3 connects the frontend to the Claude API for AI-powered query analysis. The Oracle backend and the AI bridge are still independent (no direct Oracle→Claude link yet).
+The full pipeline runs from a single click: Oracle EXPLAIN PLAN → rule engine → schema/index gathering → AI rewrite → MINUS validation → timing benchmark → UI.
 
 ## Commands
 
@@ -22,132 +23,191 @@ npm run build    # Production build
 npm run lint     # ESLint
 ```
 
-### Oracle Backend (SQL*Plus or SQL Developer)
+### Oracle backend (SQL*Plus or SQL Developer)
 
 ```sql
--- Install all database objects (run in order)
 @scripts/install.sql           -- Phase 1
 @scripts/install_phase2.sql    -- Phase 2 (requires Phase 1)
 @scripts/install_phase4.sql    -- Phase 4 (requires Phase 1 + 2)
 
--- Load test data then run test suites
 @test/01_setup_sample_data.sql
-@test/02_test_analyze_query.sql        -- 7 functional tests (Phase 1)
-@test/03_test_error_handling.sql       -- 9 error handling tests (Phase 1)
-@test/04_test_rule_engine.sql          -- Phase 2 rule engine tests
-@test/05_test_validation_engine.sql    -- 8 functional tests (Phase 4)
+@test/02_test_analyze_query.sql        -- Phase 1 functional
+@test/03_test_error_handling.sql       -- Phase 1 errors
+@test/04_test_rule_engine.sql          -- Phase 2
+@test/05_test_validation_engine.sql    -- Phase 4
 
--- Uninstall
-@sql/04_drop_all.sql
+@sql/04_drop_all.sql                   -- Uninstall
 ```
 
-**Prerequisites:** Oracle Database 12c+ (Oracle XE works); `SET SERVEROUTPUT ON SIZE UNLIMITED` before running package calls.
+**Prereqs:** Oracle DB 12c+; `SET SERVEROUTPUT ON SIZE UNLIMITED` before package calls.
+
+### Helper scripts (Node, against a live DB)
+
+`frontend/scripts/` has `oracledb`-based deployers and probes used during this project's bug-hunt sessions:
+
+```bash
+node scripts/install-phase1.mjs        <user> <pwd> <host:port/service>
+node scripts/install-rule-engine.mjs   <user> <pwd> <host:port/service>
+node scripts/install-validation-engine.mjs <user> <pwd> <host:port/service>
+node scripts/check-plan.mjs            <user> <pwd> <host:port/service>
+node scripts/probe-phase1.mjs          <user> <pwd> <host:port/service>
+```
+
+Use these to recompile a single package against an already-running database without re-running the full SQL*Plus install.
 
 ## Architecture
 
-### Oracle Backend (`sql/`)
-
-The core is `QUERY_ANALYZER_PKG` (spec: `02_create_package_spec.sql`, body: `03_create_package_body.sql`):
+### Oracle backend (`sql/`)
 
 ```
-ANALYZE_QUERY(p_query, p_report OUT CLOB)
-  → validate_query()           -- rejects NULL, non-SELECT, DML/DDL
-  → EXPLAIN PLAN FOR <query>   -- dynamic SQL; generates plan without executing
-  → DBMS_XPLAN.DISPLAY()       -- fetches plan text
-  → PARSE_PLAN()               -- extracts scan type, cost, cardinality, join type, filters
-  → INSERT into QUERY_PLAN_LOG -- audit trail
-  → returns JSON CLOB report
+QUERY_ANALYZER_PKG (Phase 1)        sql/02–03
+  ANALYZE_QUERY(p_query, p_report OUT CLOB)
+    → validate_query()              -- rejects NULL, non-SELECT, DML/DDL
+    → EXPLAIN PLAN FOR <query>      -- dynamic SQL
+    → DBMS_XPLAN.DISPLAY()          -- plan text
+    → PARSE_PLAN()                  -- scan type / cost / cardinality / joins / filters
+    → INSERT into QUERY_PLAN_LOG    -- audit trail
+    → returns JSON CLOB
+
+RULE_ENGINE_PKG (Phase 2)           sql/05–08
+  APPLY_RULES(p_query, p_report OUT CLOB)
+    → calls Phase 1 first; bails if Phase 1 status = ERROR
+    → runs 14 rules (7 enhanced + 3 deep + 4 precision)
+    → persists per-rule rows in QUERY_RULE_RESULTS
+    → returns JSON with rule_summary + triggered_rules[]
+
+VALIDATION_ENGINE_PKG (Phase 4)     sql/09–11
+  VALIDATE_AND_BENCHMARK(p_original_query, p_optimized_queries, p_iterations, p_result OUT CLOB)
+    → policy check + symmetric MINUS comparison vs original
+    → SELECT COUNT(*) FROM (<query>) timing, 1–5 iterations
+    → persists QUERY_BENCHMARK rows
+    → winner = lowest avg_exec_ms; decision = ORIGINAL_FASTEST | OPTIMIZED_SELECTED | NO_VALID_QUERY
 ```
 
-Output is always JSON — either `{"status":"SUCCESS", "analysis":{...}}` or `{"status":"ERROR", "message":"..."}`. See README.md for the full schema.
+Output is always a JSON CLOB — `{"status":"SUCCESS",…}` or `{"status":"ERROR","message":"…"}`. Phase 2 returns `{"rule_summary":{…}, "triggered_rules":[…]}`. Phase 4 returns `{"decision":"…", "winner":"…", "speedup_factor":…, "benchmarks":[…]}`.
 
-`GET_ANALYSIS_HISTORY(p_limit, p_result OUT SYS_REFCURSOR)` fetches the audit log.
+### Next.js Route Handlers (`frontend/app/api/`)
 
-### Frontend (`frontend/app/page.tsx`)
+| Route | Calls | Purpose |
+|---|---|---|
+| `oracle/test-connection` | `oracledb.getConnection` + `SELECT USER, DB_NAME` | Used by ConnectionModal's "Test connection" button |
+| `oracle/analyze` | `RULE_ENGINE_PKG.APPLY_RULES` | Phase 1 + 2 in one round trip |
+| `oracle/plan-tree` | `EXPLAIN PLAN` + reads `PLAN_TABLE` directly | Returns hierarchical nodes for the flowchart |
+| `oracle/schema` | `ALL_TABLES`, `ALL_INDEXES`, `ALL_TAB_COL_STATISTICS`, … | Per-table rows / blocks / PK / FK / indexes / per-column NDV. Fed to the LLM as grounding context |
+| `oracle/benchmark` | `VALIDATION_ENGINE_PKG.VALIDATE_AND_BENCHMARK` | Phase 4 |
+| `analyze` | `generateRewrite` in `lib/llm.ts` | AI rewrite. Returns `AIAnalysis` |
+| `chat` | `generateChatReply` in `lib/llm.ts` | Database Assistant chat (multi-turn, stateless route) |
 
-Single React component (~1200 lines) with two modes toggled by `activeMode`:
+`lib/oracle.ts` centralises connection handling: `openConnection`, `safeClose`, `readClob`, `parseOracleJson`, and an `OracleRouteError` with status-code routing for clean 503 vs 400 responses.
 
-- **SQL Optimizer mode** — multi-turn context collection (schema → indexes → execution plan → data), then Phase 2 rule evaluation + Phase 3 AI analysis
-- **Database Assistant mode** — free-form Q&A, sample query generation, concept explanations
+`lib/llm.ts` picks `gemini` or `anthropic` based on env (`LLM_PROVIDER` override, otherwise auto-detect by which key is set; Gemini wins when both are present because it's the free path). Two prompt sets:
+- `SYSTEM_PROMPT` for `generateRewrite` — strict Oracle dialect rules (A–I), self-check checklist, structured-JSON output schema
+- `CHAT_SYSTEM_PROMPT` for `generateChatReply` — DB-only scope guardrail; off-topic questions get a polite refusal
 
-State is split into two message arrays (`optMessages`, `asstMessages`). `sessionContext` accumulates attachments before `finalizeAnalysis()` (async) runs Phase 2 rules client-side then calls `/api/analyze` for AI results.
+Both routes detect 429 / quota / `RESOURCE_EXHAUSTED` errors and return a friendly `code: "RATE_LIMIT"` payload instead of the raw SDK JSON.
 
-## Next.js Version Warning
+### Frontend UI (`frontend/`)
 
-This project uses **Next.js 16.2.3 with React 19** — breaking changes exist vs. prior versions. Before writing any frontend code, read the relevant guide in `frontend/node_modules/next/dist/docs/`. Heed all deprecation notices. (See `frontend/AGENTS.md`.)
+Top-level entry: `app/page.tsx` (~250 lines). Owns:
+- Connection state (sessionStorage `querymind.connection.v2`)
+- Optimize history (sessionStorage `querymind.history.v1`, capped at 30 entries with the full `OptimizeResult`)
+- Sidebar collapse state (sessionStorage `querymind.sidebar.collapsed.v1`)
+- Race-condition guard via `runIdRef` — newer Optimize runs invalidate older awaited responses
+- Pre-flight checks: empty editor, comment-only content, `{your_table}`-style placeholders all short-circuit before the network call
 
-## Phase 2 — Rule Engine (`sql/05–08`, `scripts/install_phase2.sql`)
+Components:
+- `Sidebar.tsx` — two layouts (full 280 px / rail 56 px) inside a single `<aside>` that animates `width` 220 ms; logo doubles as the toggle. History list + search hide on the rail.
+- `QueryEditor.tsx` — textarea + transparent-text overlay for SQL highlighting; gutter; `useShortcutKeyLabel()` hook chooses ⌘ for Mac and Ctrl elsewhere; sample buttons confirm before overwriting user edits.
+- `ResultsPanel.tsx` — Plan / Rules / Rewrite / Benchmark tabs. Plan tab has a Flowchart/Table view toggle and a Fullscreen modal portaled to `document.body`. `Stat` pill renders an arrow only when `before !== after`.
+- `PlanFlowchart.tsx` — SVG hierarchical tree with subtree-width centering and orthogonal connectors; colour-coded nodes (Root, Index access, Full scan, Join, Sort/aggregate, Pipeline).
+- `ConnectionModal.tsx` — re-syncs form state with `current` prop on open; closes on Esc.
+- `ErrorModal.tsx` — centered, portal-rendered, body-scroll-locked, Esc/click-outside dismiss.
+- `ChatPanel.tsx` — wraps `/api/chat` calls; persists conversation to `querymind.chat.v1`; receives `clearSignal` from page so the sidebar's "New chat" button can reset it.
 
-**New Oracle objects:**
-- `OPTIMIZATION_RULES` — catalogue of 7 rules with severity/category/recommendation
-- `QUERY_RULE_RESULTS` — one row per triggered rule per query (FK → `QUERY_PLAN_LOG`)
-- `RULE_ENGINE_PKG` — package with `APPLY_RULES` and `GET_RULE_RESULTS`
+### Phase 2 — 14 rules
 
-**The 7 rules:** SELECT_STAR_DETECTED (MEDIUM), FULL_TABLE_SCAN_DETECTED (HIGH), MISSING_INDEX_ON_FILTER (HIGH), FUNCTION_ON_INDEXED_COLUMN (MEDIUM), SUBQUERY_CANDIDATE_FOR_JOIN (MEDIUM), UNNECESSARY_DISTINCT (LOW), CARTESIAN_JOIN_DETECTED (HIGH).
+Catalogue of 14 rules (originally 7, expanded to 14 across the precision-tuning sessions):
 
-**`APPLY_RULES` flow:**
-1. Validates SELECT-only input
-2. Calls `QUERY_ANALYZER_PKG.ANALYZE_QUERY` (Phase 1) to create a `QUERY_PLAN_LOG` row if no `p_query_id` supplied
-3. Runs `EXPLAIN PLAN` independently for plan-dependent rules (Rules 2 & 7)
-4. Evaluates all 7 rules via private procedures; each calls `persist_result()` on trigger
-5. Commits, then calls `build_json_report()` for JSON CLOB output
+**Enhanced (7):** SELECT_STAR_DETECTED · FULL_TABLE_SCAN_DETECTED · MISSING_INDEX_ON_FILTER · FUNCTION_ON_INDEXED_COLUMN · SUBQUERY_CANDIDATE_FOR_JOIN · UNNECESSARY_DISTINCT · CARTESIAN_JOIN_DETECTED
 
-**Frontend (Phase 2 UI):** The frontend simulates the same 7 rules in TypeScript (`applyPhase2Rules` in `page.tsx`) for instant feedback before the API bridge exists. The `RuleCard` component renders each triggered rule with collapsible details, severity badge, index DDL, and a rewrite fragment.
+**Deep-analysis (3):** AGGREGATE_INDEX_HINT · NESTED_VIEW_INEFFICIENCY · TABLE_CONTEXT_SUMMARY
 
-## Phase 3 — AI-Powered Analysis (`frontend/app/api/analyze/route.ts`)
+**Precision (4):** HIGH_COST_PLAN · IMPLICIT_TYPE_CONVERSION · STALE_STATISTICS · OR_CHAIN_INSTEAD_OF_IN
 
-**New objects:**
-- `frontend/app/api/analyze/route.ts` — Next.js App Router POST handler; calls `claude-sonnet-4-6` via `@anthropic-ai/sdk`
-- `frontend/.env.local` — holds `ANTHROPIC_API_KEY` (not committed)
+`FULL_TABLE_SCAN_DETECTED` skips DUAL and tiny tables (<= 256 rows, <= 2 blocks) — a full scan there is the optimal access path, so flagging it is noise.
 
-**Flow in `finalizeAnalysis` (async):**
-1. Phase 1/2 run synchronously (client-side, instant)
-2. `fetch('/api/analyze', { method: 'POST', body: JSON.stringify({ query, schema, indexes, plan, rules }) })`
-3. API route calls Claude with a fixed SQL expert system prompt
-4. Returns `AIAnalysis` JSON: `decision`, `confidence`, `issues[]`, `optimized_queries[]`, `explanation`
-5. `AIAnalysisPanel` renders the result — decision badge + confidence bar, issues list, tabbed optimized queries with explanations, collapsible AI explanation
+### Phase 3 — AI rewrite
 
-**Environment setup:** copy `frontend/.env.local` and replace the placeholder with a real key from console.anthropic.com.
+`lib/optimize.ts` orchestrates the round trip:
+1. POST `/api/oracle/analyze` → Phase 1 + 2 results
+2. POST `/api/oracle/plan-tree` → flowchart nodes
+3. POST `/api/oracle/schema` for every `FROM` / `JOIN` table the regex extracts → per-column NDV, indexes, FKs
+4. POST `/api/analyze` with the schema + rules + plan as grounding → AI rewrites
+5. POST `/api/oracle/benchmark` with the AI candidates → Phase 4
 
-## Phase 4 — Validation & Benchmark Engine (`sql/09–11`, `scripts/install_phase4.sql`)
+Each step is best-effort: a failure earlier in the chain leaves later steps with their graceful empty states (e.g. AI failure → Rewrite tab shows "AI rewrite failed" with the friendly message, Benchmark tab shows "No benchmark data").
 
-**New Oracle objects:**
-- `QUERY_BENCHMARK` — one row per query per benchmark run (FK → `QUERY_PLAN_LOG`)
-- `VALIDATION_ENGINE_PKG` — package with `VALIDATE_AND_BENCHMARK` and `GET_BENCHMARK_RESULTS`
+### Phase 4 — Validation + benchmark
 
-**`VALIDATE_AND_BENCHMARK` flow:**
-1. Validates original query (SELECT-only)
-2. For each optimized candidate: policy check → symmetric MINUS comparison vs original → timing
-3. Timing uses `SELECT COUNT(*) FROM (<query>)` executed 1–5 times; avg/min/max captured
-4. All results persisted to `QUERY_BENCHMARK` via `persist_benchmark()`
-5. Winner selected by lowest `avg_exec_ms`; decision is `ORIGINAL_FASTEST`, `OPTIMIZED_SELECTED`, or `NO_VALID_QUERY`
-6. Returns structured JSON with `decision`, `winner`, `speedup_factor`, `reasoning`, and a `benchmarks[]` array
+`compare_result_sets` has three paths in [sql/11_create_validation_package_body.sql](sql/11_create_validation_package_body.sql):
+- **STRICT** — `SELECT COUNT(*) FROM ((A MINUS B) UNION ALL (B MINUS A))`
+- **ROW_COUNT** — fallback when MINUS fails (typically `ORA-00918` "column ambiguously defined" from `SELECT *` on joined tables); compares row counts only — weaker but actionable
+- **FAILED** — both paths errored; candidate is rejected
 
-**Result-set comparison:** `compare_result_sets` uses `SELECT COUNT(*) FROM ((A MINUS B) UNION ALL (B MINUS A))`. A count of 0 means identical sets.
+The `BenchTab` UI surfaces this via per-row badges: `Identical` (green) / `Row count only` (warn) / `Differs` (red). Row counts come from Phase 4's `result_row_count`, NOT the optimizer's plan-cardinality estimate (which often diverges by orders of magnitude).
 
-**Caller pattern:**
-```sql
-DECLARE
-    l_queries validation_engine_pkg.query_list_t;
-    l_result  CLOB;
-BEGIN
-    l_queries(1) := 'SELECT id, name FROM employees WHERE dept_id = 10';
-    l_queries(2) := 'SELECT /*+ INDEX(e idx_dept) */ id, name FROM employees e WHERE dept_id = 10';
-    validation_engine_pkg.validate_and_benchmark(
-        p_original_query    => 'SELECT * FROM employees WHERE dept_id = 10',
-        p_optimized_queries => l_queries,
-        p_iterations        => 3,
-        p_result            => l_result
-    );
-    DBMS_OUTPUT.PUT_LINE(SUBSTR(l_result, 1, 4000));
-END;
+## Conventions
+
+### BUGS.md is the running log
+
+Every bug found and fixed in this project lives in [BUGS.md](BUGS.md) at the repo root. The format is:
+
 ```
+## N. <Title>
+- **Severity** — High | Medium | Low
+- **Area** — Frontend / state | Backend / PL-SQL | Backend / API | …
+- **Date fixed** — YYYY-MM-DD
+- **Status** — ✅ Fixed | 🟡 In progress | 🔴 Open | ⚪ Withdrawn
+- **Repro** — what the user did and what went wrong
+- **Root cause** — why it broke
+- **Fix** — what changed and why this approach
+- **Files** — clickable links to the changed files
+- **Verified** — how the fix was validated (Playwright run, recompile, etc.)
+```
+
+Numbers are **monotonic and never reused**. Append at the bottom; never renumber. When fixing a bug, add an entry. The convention is also recorded in `MEMORY.md` so future sessions follow it.
+
+### sessionStorage keys
+
+| Key | Purpose | Capped at |
+|---|---|---|
+| `querymind.connection.v2` | Oracle creds (per tab) | n/a |
+| `querymind.history.v1` | Optimize results with full `OptimizeResult` | 30 entries |
+| `querymind.chat.v1` | Database Assistant turns | 100 messages |
+| `querymind.sidebar.collapsed.v1` | Rail vs full sidebar | n/a |
+
+Per-tab (sessionStorage, not localStorage) so opening a new tab gives a fresh session.
+
+### Race-condition guard
+
+When the user re-runs Optimize while the previous request is in flight, the older response would otherwise overwrite the newer state. Pattern in `runOptimize` in `app/page.tsx`:
+
+```tsx
+const myRunId = ++runIdRef.current;
+// … awaits …
+if (myRunId !== runIdRef.current) return;  // newer run won
+```
+
+## Next.js version warning
+
+This project uses **Next.js 16.2.3 with React 19** — breaking changes vs the public training corpus. Before writing frontend code, read the relevant guide in `frontend/node_modules/next/dist/docs/`. Heed deprecation notices. (See `frontend/AGENTS.md`.)
 
 ## Roadmap
 
 | Phase | Status |
-|-------|--------|
-| Phase 1 — DB-native analysis engine | Complete |
-| Phase 2 — Rule-based optimization + index recommendations | Complete |
-| Phase 3 — AI-powered query analysis (Claude API bridge) | Complete |
-| Phase 4 — Validation engine + result comparison | Complete |
+|---|---|
+| Phase 1 — DB-native analysis | Complete |
+| Phase 2 — Rule engine (14 rules) + index recommendations | Complete |
+| Phase 3 — AI rewrite (Gemini default, Anthropic optional) | Complete |
+| Phase 4 — Validation + benchmark engine | Complete |
+| Bridge — full UI ↔ Oracle ↔ AI pipeline live | Complete |

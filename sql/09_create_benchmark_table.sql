@@ -27,8 +27,8 @@ CREATE TABLE query_benchmark (
                                       CONSTRAINT chk_qb_is_valid CHECK (is_valid IN ('Y','N')),
     validation_msg    VARCHAR2(4000),
     result_row_count  NUMBER          DEFAULT 0,
-    results_match     VARCHAR2(3)     CONSTRAINT chk_qb_match
-                                      CHECK (results_match IN ('YES','NO','N/A')),
+    results_match     VARCHAR2(20)    CONSTRAINT chk_qb_match
+                                      CHECK (results_match IN ('YES','NO','N/A','ROW_COUNT')),
     diff_row_count    NUMBER          DEFAULT 0,
     iter_count        NUMBER          DEFAULT 0,
     avg_exec_ms       NUMBER(12,3),
@@ -39,6 +39,6 @@ CREATE TABLE query_benchmark (
 
 COMMENT ON TABLE  query_benchmark              IS 'Phase 4: per-query benchmark rows written by VALIDATION_ENGINE_PKG';
 COMMENT ON COLUMN query_benchmark.query_label  IS 'ORIGINAL | OPTIMIZED_1 | OPTIMIZED_2 ...';
-COMMENT ON COLUMN query_benchmark.results_match IS 'YES if result set matches original; NO if different; N/A for the original itself';
+COMMENT ON COLUMN query_benchmark.results_match IS 'YES = strict row-by-row match; ROW_COUNT = only row counts compared (MINUS could not parse, e.g. SELECT * across joined tables with duplicate audit columns); NO = differs; N/A for the original itself';
 
 PROMPT >> Table QUERY_BENCHMARK created successfully.

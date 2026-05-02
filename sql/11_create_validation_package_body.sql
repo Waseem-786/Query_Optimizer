@@ -107,35 +107,93 @@ AS
 
     -- ========================================================================
     -- PRIVATE: compare_result_sets
-    -- Runs a symmetric MINUS to count rows that differ between two queries.
-    -- p_diff = 0 means the result sets are identical.
+    -- Strict row-by-row comparison via symmetric MINUS. p_diff = 0 means
+    -- the two result sets are identical.
+    --
+    -- Fallback for SELECT * across multi-table joins:
+    --   When MINUS fails with ORA-00918 (column ambiguously defined) or
+    --   ORA-00957 (duplicate column name) — typical for queries that project
+    --   shared audit columns from joined tables — we cannot do a true MINUS,
+    --   but we CAN compare row counts via SELECT COUNT(*) FROM (q). That
+    --   gives a weaker "rows-match" verdict and we tag p_match accordingly.
+    --
+    -- Output:
+    --   p_diff  = 0  when result sets are equivalent under the chosen check
+    --   p_diff  = -1 when comparison failed entirely
+    --   p_match = 'STRICT' when MINUS-equivalence proven
+    --           = 'ROW_COUNT' when only row counts could be compared
+    --           = 'FAILED' when neither could be checked
+    --   p_error = empty on success, error message otherwise
     -- ========================================================================
     PROCEDURE compare_result_sets (
         p_query1 IN  CLOB,
         p_query2 IN  CLOB,
         p_diff   OUT NUMBER,
+        p_match  OUT VARCHAR2,
         p_error  OUT VARCHAR2
     ) IS
-        v_sql CLOB;
+        v_sql       CLOB;
+        v_count1    NUMBER;
+        v_count2    NUMBER;
+        v_amb_col   EXCEPTION;
+        v_dup_col   EXCEPTION;
+        PRAGMA EXCEPTION_INIT(v_amb_col, -918);   -- ORA-00918 column ambiguously defined
+        PRAGMA EXCEPTION_INIT(v_dup_col, -957);   -- ORA-00957 duplicate column name
     BEGIN
         p_diff  := -1;
+        p_match := 'FAILED';
         p_error := NULL;
-        -- Symmetric difference: union of both one-sided MINUS operations
-        v_sql :=
-            'SELECT COUNT(*) FROM ('  ||
-            '  SELECT * FROM (' || p_query1 || ')' ||
-            '  MINUS '                              ||
-            '  SELECT * FROM (' || p_query2 || ')' ||
-            '  UNION ALL '                          ||
-            '  SELECT * FROM (' || p_query2 || ')' ||
-            '  MINUS '                              ||
-            '  SELECT * FROM (' || p_query1 || ')' ||
-            ')';
-        EXECUTE IMMEDIATE v_sql INTO p_diff;
-    EXCEPTION
-        WHEN OTHERS THEN
-            p_diff  := -1;
-            p_error := 'Comparison error: ' || SQLERRM;
+
+        -- Try strict MINUS comparison first.
+        BEGIN
+            v_sql :=
+                'SELECT COUNT(*) FROM ('  ||
+                '  SELECT * FROM (' || p_query1 || ')' ||
+                '  MINUS '                              ||
+                '  SELECT * FROM (' || p_query2 || ')' ||
+                '  UNION ALL '                          ||
+                '  SELECT * FROM (' || p_query2 || ')' ||
+                '  MINUS '                              ||
+                '  SELECT * FROM (' || p_query1 || ')' ||
+                ')';
+            EXECUTE IMMEDIATE v_sql INTO p_diff;
+            p_match := 'STRICT';
+            RETURN;
+        EXCEPTION
+            WHEN v_amb_col OR v_dup_col THEN
+                -- Fall through to row-count comparison.
+                NULL;
+            WHEN OTHERS THEN
+                p_diff  := -1;
+                p_match := 'FAILED';
+                p_error := 'Comparison error: ' || SQLERRM;
+                RETURN;
+        END;
+
+        -- Fallback path: count rows on each side and compare. This is a
+        -- weaker check (two queries can have the same row count yet return
+        -- different rows) but it is always parseable.
+        BEGIN
+            EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM (' || p_query1 || ')' INTO v_count1;
+            EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM (' || p_query2 || ')' INTO v_count2;
+            p_diff  := ABS(v_count1 - v_count2);
+            p_match := 'ROW_COUNT';
+            -- If counts disagree, surface as comparison "differs" with an
+            -- explanatory message but a real diff number.
+            IF p_diff > 0 THEN
+                p_error := 'Row counts differ: original=' || v_count1
+                        || ', candidate=' || v_count2
+                        || ' (strict row-by-row check skipped: SELECT * across joined tables produced duplicate column names)';
+            ELSE
+                p_error := 'Row counts match (' || v_count1
+                        || '). Strict row-by-row check skipped: SELECT * across joined tables produced duplicate column names.';
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                p_diff  := -1;
+                p_match := 'FAILED';
+                p_error := 'Row-count fallback failed: ' || SQLERRM;
+        END;
     END compare_result_sets;
 
     -- ========================================================================
@@ -196,7 +254,7 @@ AS
             is_valid   CHAR(1),
             val_msg    VARCHAR2(4000),
             row_count  NUMBER,
-            match      VARCHAR2(3),   -- YES | NO | N/A
+            match      VARCHAR2(20),  -- YES | NO | ROW_COUNT | N/A
             diff_rows  NUMBER,
             avg_ms     NUMBER,
             min_ms     NUMBER,
@@ -210,6 +268,8 @@ AS
         l_iters       NUMBER;
         l_error       VARCHAR2(4000);
         l_diff        NUMBER;
+        l_match       VARCHAR2(20);
+        l_warn_msg    VARCHAR2(4000);
 
         -- Winner tracking
         l_best_idx    PLS_INTEGER := -1;
@@ -279,26 +339,48 @@ AS
                 CONTINUE;
             END IF;
 
-            -- Result-set correctness check (only when original executed OK)
+            -- Result-set correctness check (only when original executed OK).
+            -- compare_result_sets uses MINUS first; on ORA-00918 / 00957 it
+            -- falls back to row-count comparison and tags p_match accordingly.
             IF l_orig_valid THEN
+                l_warn_msg := NULL;
                 compare_result_sets(p_original_query, p_optimized_queries(i),
-                                    l_diff, l_error);
-                IF l_error IS NOT NULL THEN
+                                    l_diff, l_match, l_error);
+
+                IF l_match = 'STRICT' THEN
+                    -- True row-by-row comparison succeeded
+                    l_entries(i).diff_rows := l_diff;
+                    IF l_diff = 0 THEN
+                        l_entries(i).match := 'YES';
+                    ELSE
+                        l_entries(i).match    := 'NO';
+                        l_entries(i).is_valid := 'N';
+                        l_entries(i).val_msg  := 'Result set differs from original ('
+                                             || l_diff || ' row(s) differ)';
+                        l_entries(i).row_count := 0;
+                        CONTINUE;
+                    END IF;
+
+                ELSIF l_match = 'ROW_COUNT' THEN
+                    -- MINUS could not parse (duplicate column names from
+                    -- SELECT * across joined tables). Use row-count fallback.
+                    l_entries(i).diff_rows := l_diff;
+                    IF l_diff = 0 THEN
+                        l_entries(i).match    := 'ROW_COUNT';
+                        l_warn_msg            := l_error;  -- informational
+                    ELSE
+                        l_entries(i).match    := 'NO';
+                        l_entries(i).is_valid := 'N';
+                        l_entries(i).val_msg  := l_error;  -- "Row counts differ..."
+                        l_entries(i).row_count := 0;
+                        CONTINUE;
+                    END IF;
+
+                ELSE  -- 'FAILED'
                     l_entries(i).is_valid  := 'N';
-                    l_entries(i).val_msg   := l_error;
+                    l_entries(i).val_msg   := NVL(l_error, 'Result-set comparison failed');
                     l_entries(i).match     := 'NO';
                     l_entries(i).diff_rows := -1;
-                    l_entries(i).row_count := 0;
-                    CONTINUE;
-                END IF;
-                l_entries(i).diff_rows := l_diff;
-                IF l_diff = 0 THEN
-                    l_entries(i).match := 'YES';
-                ELSE
-                    l_entries(i).match    := 'NO';
-                    l_entries(i).is_valid := 'N';
-                    l_entries(i).val_msg  := 'Result set differs from original ('
-                                         || l_diff || ' row(s) differ)';
                     l_entries(i).row_count := 0;
                     CONTINUE;
                 END IF;
@@ -317,7 +399,8 @@ AS
                 l_entries(i).row_count := 0;
             ELSE
                 l_entries(i).is_valid := 'Y';
-                l_entries(i).val_msg  := 'OK';
+                -- Preserve the row-count-only warning when present, else 'OK'
+                l_entries(i).val_msg  := NVL(l_warn_msg, 'OK');
                 -- Update winner if faster than current best
                 IF l_best_ms IS NULL OR l_entries(i).avg_ms < l_best_ms THEN
                     l_best_ms  := l_entries(i).avg_ms;
