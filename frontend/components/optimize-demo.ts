@@ -80,11 +80,37 @@ export type PlanNode = {
   qblock_name: string | null;
 };
 
+// Structured AI insights from /api/analyze, separated from the rewrite SQL
+// so the Rewrite tab can stay pure-code and the Recommendation tab can
+// render diagnosis + rationale + trade-offs as proper UI sections.
+// Optional because the AI call is best-effort — Phase 1/2/4 still produce
+// useful output when this step fails.
+export type AiAnalysisSummary = {
+  decision: "ALREADY_OPTIMIZED" | "NEEDS_IMPROVEMENT" | "POOR";
+  confidence: number;                  // 0.0 - 1.0
+  issues: string[];                    // what's wrong with the original
+  explanation: {
+    why_inefficient: string;
+    why_better: string;
+    trade_offs: string;
+  };
+  // Optional list of full Oracle `CREATE INDEX …` DDL strings. Merged from
+  // (a) the rule engine's deterministic MISSING_INDEX_ON_FILTER / AGGREGATE_
+  // INDEX_HINT output and (b) anything the AI emitted in
+  // `recommended_indexes`. Deduplicated by normalised DDL text. Empty /
+  // absent when no index would meaningfully change the access path.
+  recommended_indexes?: string[];
+  candidate_label: string;             // e.g. "ANSI joins + DATE literal"
+  provider: string;                    // "gemini" | "anthropic" | "claude-code"
+  model: string;
+};
+
 export type OptimizeResult = {
   rules: RuleHit[];
   plan: PlanRow[];
   planTree?: PlanNode[];
   rewrite: string;
+  aiAnalysis?: AiAnalysisSummary;
   benchmark: Benchmark;
   summary: string;
 };

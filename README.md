@@ -26,48 +26,54 @@ The Oracle backend never executes the user's query at scale. Phase 1 + 2 use `EX
 |---|---|---|
 | **1 — Analysis engine** | `EXPLAIN PLAN` + `DBMS_XPLAN` parsing, JSON output, audit log | `QUERY_ANALYZER_PKG` |
 | **2 — Rule engine** | 14 rules (full-scan detection, missing index, function-on-column, implicit conversions, stale stats, OR→IN, …) with severity / category / index DDL recommendations | `RULE_ENGINE_PKG` |
-| **3 — AI rewrite** | Gemini (default) or Anthropic. Prompt grounded with your real schema, indexes, FKs, NDV stats, plan, and rule findings | `frontend/lib/llm.ts`, `frontend/app/api/analyze/route.ts` |
+| **3 — AI rewrite + Recommendation** | Three provider options (Claude Code via OAuth, Gemini, Anthropic API). Prompt grounded with your real schema, indexes, FKs, NDV stats, plan, and rule findings. Returns the rewritten SQL **and** structured `recommended_indexes` DDL | `frontend/lib/llm.ts`, `frontend/app/api/analyze/route.ts` |
 | **4 — Validation + benchmark** | Symmetric `MINUS` for set-equality (with `ROW_COUNT` fallback), 1–5 timed iterations, winner selection | `VALIDATION_ENGINE_PKG` |
-| **Frontend** | Next.js 16 / React 19 UI: SQL editor, plan flowchart with fullscreen, rule cards, side-by-side rewrite, benchmark with speedup factor, DB-only chat assistant | `frontend/` |
+| **Frontend** | Next.js 16 / React 19 UI: SQL editor, plan flowchart with fullscreen, rule cards, side-by-side rewrite, recommendation tab, benchmark with speedup factor, streaming DB-only chat assistant with markdown rendering | `frontend/` |
 
 Other features:
 - Live Oracle bridge via `oracledb` thin mode — no Oracle Instant Client install required
+- **Provider picker** in the chat header + Settings modal (gear icon). Switch between Claude Code (uses your local OAuth subscription), Gemini (free tier), and Anthropic API at any time
+- **Streaming chat** — assistant replies render token-by-token like ChatGPT/Claude, with proper markdown (code blocks with syntax highlight, tables, bold/italic, lists, links)
+- **Per-conversation history** — every Assistant chat becomes its own sidebar entry (like ChatGPT), restorable on click, deletable, persists across reload
+- **Recommendation tab** — separate from Rewrite. Shows issues, why_inefficient, why_better, trade-offs, and a conditional "Suggested indexes" section with copyable `CREATE INDEX` DDL (merged from the rule engine AND the AI, deduplicated)
+- **Real progress indicator** during Optimize — driven by actual pipeline phases, not a timer; tells the user which step is currently running (analyze → plan-tree → schema → AI → benchmark)
 - Database Assistant tab: free-form Q&A bound to a strict DB-only scope (Oracle internals, SQL idioms, plan reading, indexing, PL/SQL)
-- Per-tab session persistence: connection, history, chat, sidebar state all survive reload
+- Per-tab session persistence: connection, history, provider choice, sidebar state all survive reload
 - Collapsible 280 px ↔ 56 px sidebar with `prefers-reduced-motion` respect
-- Comprehensive error handling: friendly modals, friendly rate-limit messages, race-condition guards, comment-only / placeholder pre-flight checks
+- Comprehensive error handling: friendly modals, friendly rate-limit messages, race-condition guards, comment-only / placeholder pre-flight checks, AbortController on chat unmount to prevent orphan-stream corruption
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                                User browser                                   │
-│  Sidebar │ Editor │ Plan / Rules / Rewrite / Benchmark tabs │ Assistant chat  │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                                  User browser                                      │
+│  Sidebar │ Editor │ Plan / Rules / Rewrite / Recommendation / Benchmark │ Chat     │
+└───────────────────────────────────────────────────────────────────────────────────┘
                                        │ fetch
                                        ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                       Next.js Route Handlers (frontend/app/api)              │
-│  /api/oracle/analyze  → RULE_ENGINE_PKG.APPLY_RULES (Phase 1 + 2)            │
-│  /api/oracle/plan-tree → EXPLAIN PLAN + PLAN_TABLE                           │
-│  /api/oracle/schema   → ALL_TABLES / ALL_INDEXES / ALL_TAB_COL_STATISTICS    │
-│  /api/oracle/benchmark → VALIDATION_ENGINE_PKG.VALIDATE_AND_BENCHMARK        │
-│  /api/analyze         → Gemini / Anthropic (rewrite + structured JSON)       │
-│  /api/chat            → Gemini / Anthropic (DB-only chat)                    │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                       Next.js Route Handlers (frontend/app/api)                   │
+│  /api/oracle/analyze     → RULE_ENGINE_PKG.APPLY_RULES (Phase 1 + 2)              │
+│  /api/oracle/plan-tree   → EXPLAIN PLAN + PLAN_TABLE                              │
+│  /api/oracle/schema      → ALL_TABLES / ALL_INDEXES / ALL_TAB_COL_STATISTICS      │
+│  /api/oracle/benchmark   → VALIDATION_ENGINE_PKG.VALIDATE_AND_BENCHMARK           │
+│  /api/analyze            → AI rewrite (Claude Code / Gemini / Anthropic API)      │
+│  /api/chat               → streaming NDJSON chat (same provider abstraction)      │
+│  /api/llm-status         → reports which providers are configured                 │
+└───────────────────────────────────────────────────────────────────────────────────┘
                           │                                     │
-                  oracledb (thin)                       Gemini / Anthropic SDK
+                  oracledb (thin)                Claude Agent SDK / GenAI / Anthropic
                           ▼                                     ▼
-┌──────────────────────────────────────────┐    ┌────────────────────────────────┐
-│             Oracle Database              │    │           LLM provider          │
-│  QUERY_ANALYZER_PKG (Phase 1)            │    │  Default: gemini-2.5-flash     │
-│  RULE_ENGINE_PKG    (Phase 2 — 14 rules) │    │  Optional: claude-sonnet-4-6   │
-│  VALIDATION_ENGINE_PKG (Phase 4)         │    │  Auto-detect via env keys      │
-│  Audit tables: QUERY_PLAN_LOG,           │    └────────────────────────────────┘
-│                QUERY_RULE_RESULTS,       │
-│                QUERY_BENCHMARK           │
+┌──────────────────────────────────────────┐    ┌────────────────────────────────────┐
+│             Oracle Database              │    │           LLM providers             │
+│  QUERY_ANALYZER_PKG (Phase 1)            │    │  claude-code  (local OAuth, slow)   │
+│  RULE_ENGINE_PKG    (Phase 2 — 14 rules) │    │  gemini       (free tier, fast)     │
+│  VALIDATION_ENGINE_PKG (Phase 4)         │    │  anthropic    (paid API, fast)      │
+│  Audit tables: QUERY_PLAN_LOG,           │    │  user-pickable from the chat header │
+│                QUERY_RULE_RESULTS,       │    │  or the Settings gear icon          │
+│                QUERY_BENCHMARK           │    └────────────────────────────────────┘
 └──────────────────────────────────────────┘
 ```
 
@@ -87,16 +93,22 @@ sqlplus username/password@//host:port/service
 
 > Tested on Oracle 12c+ and Oracle XE. Set `SET SERVEROUTPUT ON SIZE UNLIMITED` before running PL/SQL blocks.
 
-### 2. Configure the LLM
+### 2. Pick an LLM provider
+
+The app supports three providers; pick whichever fits. You can switch at runtime via the AI dropdown in the chat header or the gear-icon Settings modal.
+
+| Provider | Setup | Latency | Cost |
+|---|---|---|---|
+| **Claude Code** (default) | Install [Claude Code](https://claude.com/code) locally and run `claude login`. No env var needed. | Slow (~1–6 min on complex queries) | Uses your Claude Code subscription |
+| **Gemini** | `GEMINI_API_KEY=…` in `frontend/.env.local`. Free key at [aistudio.google.com](https://aistudio.google.com) | Fast (~3–5 s) | Free tier covers casual use |
+| **Anthropic API** | `ANTHROPIC_API_KEY=…` in `frontend/.env.local`. Get one at [console.anthropic.com](https://console.anthropic.com) | Fast (~3–10 s) | Paid per-call |
 
 ```bash
 cd frontend
-cp .env.local.example .env.local   # template included
+cp .env.local.example .env.local   # template included; edit and add whichever key(s) you want
 ```
 
-Edit `.env.local` and set **one** of:
-- `GEMINI_API_KEY=…` — free at [aistudio.google.com](https://aistudio.google.com), and the default
-- `ANTHROPIC_API_KEY=…` — paid; opt in via `LLM_PROVIDER=anthropic`
+The picker hides options whose key isn't set; the Settings modal shows a red dot + explanation for unconfigured providers.
 
 ### 3. Run the dev server
 
@@ -110,11 +122,12 @@ Open `http://localhost:3000`, click the connection footer (bottom-left of the si
 
 ### 4. Optimize a query
 
-Paste a slow Oracle `SELECT` into the editor and press **`Ctrl/⌘ + Enter`** (or click **Optimize**). The right pane fills with:
+Paste a slow Oracle `SELECT` into the editor and press **`Ctrl/⌘ + Enter`** (or click **Optimize**). A real progress indicator walks through five phases as they actually run (analyze → plan-tree → schema → AI → benchmark) — no fake timer. The right pane then fills with:
 
 - **Plan** — flowchart of the EXPLAIN PLAN tree, with table list, index list, and a quick health check (full-scan count, plan cost, op count). A Fullscreen button opens the flowchart in a portal-rendered modal.
 - **Rules** — every triggered rule with severity badge, plain-English context, and a recommendation (often a `CREATE INDEX` DDL).
-- **Rewrite** — original / AI rewrite side-by-side. Includes a "why this is better" + "trade-offs" block when the model produced one.
+- **Rewrite** — original / AI rewrite side-by-side. Pure SQL only (provider/confidence badge in the header).
+- **Recommendation** — the AI's diagnosis (`issues`), why the original is slow, why the rewrite is better, trade-offs, and a conditional **Suggested indexes** section with copyable `CREATE INDEX` DDL (merged from the rule engine + AI, deduplicated).
 - **Benchmark** — speedup factor, before/after timing bar, per-candidate avg/min/max table, and a result-set match column (Identical / Row count only / Differs / Not tested).
 
 ---
@@ -134,15 +147,20 @@ This project uses **Next.js 16.2.3 + React 19** — breaking changes exist vs ol
 
 | File | Purpose |
 |---|---|
-| `app/page.tsx` | Top-level state owner: connection, history, sidebar collapse, race-condition guard, pre-flight validation |
-| `components/Sidebar.tsx` | Collapsible sidebar (280 px ↔ 56 px rail) with mode toggle, search, history, theme toggle, connection footer |
+| `app/page.tsx` | Top-level state owner: connection, unified Optimize+Chat history, sidebar collapse, provider preference, race-condition guard, pre-flight validation, chat-load key |
+| `components/Sidebar.tsx` | Collapsible sidebar (280 px ↔ 56 px rail) with mode toggle, search, history list (Optimize runs + Chat conversations filtered by mode), theme toggle, gear icon → Settings, connection footer |
 | `components/QueryEditor.tsx` | SQL editor with syntax-highlight overlay, line numbers, Tab→2-space, platform-aware shortcut hint, sample-button confirmation |
-| `components/ResultsPanel.tsx` | Plan / Rules / Rewrite / Benchmark tabs |
+| `components/ResultsPanel.tsx` | Plan / Rules / Rewrite / **Recommendation** / Benchmark tabs. Phase-driven RunningState progress indicator. |
 | `components/PlanFlowchart.tsx` | SVG hierarchical tree of the plan with subtree-width centering |
 | `components/ConnectionModal.tsx` | Oracle credentials + test-connection probe |
 | `components/ErrorModal.tsx` | Centered, portal-rendered error dialog |
-| `components/ChatPanel.tsx` | Database Assistant chat (DB-only scope) |
-| `lib/optimize.ts` | Frontend orchestrator — chains the 5 routes |
+| `components/SettingsModal.tsx` | Gear-icon modal — provider availability + selection |
+| `components/ProviderPicker.tsx` | Compact dropdown in chat header — quick provider switch |
+| `components/ChatPanel.tsx` | Database Assistant chat (DB-only scope, NDJSON streaming, AbortController on unmount, controlled by parent's per-chat messages) |
+| `components/MarkdownRender.tsx` | react-markdown + remark-gfm. SQL fenced blocks route through SqlBlock; every code block gets a Copy button |
+| `lib/optimize.ts` | Frontend orchestrator — chains the 5 routes; emits `onPhase` callbacks for the progress indicator |
+| `lib/llm.ts` | Provider abstraction (Gemini / Anthropic / Claude Code), structured-JSON schema for rewrite, streaming generators for chat |
+| `lib/use-llm-provider.ts` | Hook that reads/writes the active provider + fetches `/api/llm-status` |
 | `lib/oracle.ts` | `openConnection`, `safeClose`, `readClob`, `parseOracleJson`, `OracleRouteError` |
 | `lib/llm.ts` | Provider abstraction (Gemini / Anthropic), system prompts, structured-JSON schema |
 
@@ -259,8 +277,9 @@ Uninstall with `@sql/04_drop_all.sql`.
 | `/api/oracle/plan-tree` | POST | `{connection, query}` | `{nodes: PlanNode[]}` for the flowchart |
 | `/api/oracle/schema` | POST | `{connection, tables: string[]}` | `{tables: TableSchemaMeta[]}` |
 | `/api/oracle/benchmark` | POST | `{connection, originalQuery, optimizedQueries[], iterations}` | Phase 4 JSON |
-| `/api/analyze` | POST | `{query, plan?, rules?, schema?, indexes?}` | `AIAnalysis` (decision, confidence, issues, optimized_queries[], explanation) |
-| `/api/chat` | POST | `{messages: ChatMessage[]}` | `{content, provider, model}` |
+| `/api/analyze` | POST | `{query, plan?, rules?, schema?, indexes?, provider?}` | `AIAnalysis` (decision, confidence, issues, optimized_queries[], explanation, **recommended_indexes?**) |
+| `/api/chat` | POST | `{messages: ChatMessage[], provider?}` | **NDJSON stream** — one JSON event per line: `meta` / `delta` / `done` / `error` |
+| `/api/llm-status` | GET | — | `{providers: { gemini: {available, reason?}, anthropic: {…}, "claude-code": {…} }}` |
 
 Any route returns HTTP `429` with `code: "RATE_LIMIT"` and a friendly message when the LLM provider's free-tier quota is exhausted, instead of dumping the raw SDK exception JSON.
 
@@ -305,8 +324,9 @@ Query_Optimizer/
 └── frontend/                            # Next.js 16 / React 19 UI
     ├── app/
     │   ├── api/
-    │   │   ├── analyze/route.ts         # AI rewrite (Gemini / Anthropic)
-    │   │   ├── chat/route.ts            # DB-only assistant chat
+    │   │   ├── analyze/route.ts         # AI rewrite (Claude Code / Gemini / Anthropic)
+    │   │   ├── chat/route.ts            # DB-only assistant chat — NDJSON streaming
+    │   │   ├── llm-status/route.ts      # Provider availability for the picker UI
     │   │   └── oracle/
     │   │       ├── analyze/route.ts        # Phase 1 + 2
     │   │       ├── benchmark/route.ts      # Phase 4
@@ -319,9 +339,10 @@ Query_Optimizer/
     │
     ├── components/                      # See "Frontend" section above
     ├── lib/
-    │   ├── llm.ts                       # Provider abstraction + prompts
-    │   ├── optimize.ts                  # Frontend orchestrator
-    │   └── oracle.ts                    # Connection + CLOB helpers
+    │   ├── llm.ts                       # Provider abstraction + prompts + streaming generators
+    │   ├── optimize.ts                  # Frontend orchestrator (with onPhase callback)
+    │   ├── oracle.ts                    # Connection + CLOB helpers
+    │   └── use-llm-provider.ts          # Provider preference + availability hook
     └── scripts/                         # Node-based PL/SQL deployers
 ```
 

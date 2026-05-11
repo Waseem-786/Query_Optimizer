@@ -354,3 +354,52 @@ Running log of every issue found and fixed in this project. New entries are appe
   2. Added a global `@media (prefers-reduced-motion: reduce)` block in [globals.css](frontend/app/globals.css) that clamps every animation/transition duration to 0.01 ms, disables `fade-up` and `pulse-dot`, and forces `scroll-behavior: auto`. Users with the OS preference set get instant transitions everywhere.
 - **Files** — [frontend/components/Sidebar.tsx](frontend/components/Sidebar.tsx), [frontend/app/globals.css](frontend/app/globals.css)
 - **Verified** — `getComputedStyle(aside)` reports `transition-property: width`, `duration: 0.22s`, `timing-function: cubic-bezier(0, 0, 0.2, 1)`. Width animates 280 → 56 over the duration; content cross-fades via `fade-up`.
+
+## 32. `notify()` called inside a `setMessages` updater triggered a React warning and silently dropped the parent state update
+- **Severity** — High (correctness)
+- **Area** — Frontend / state
+- **Date fixed** — 2026-05-11
+- **Status** — ✅ Fixed
+- **Repro** — Send any chat. Dev console emits *"Cannot update a component (`Home`) while rendering a different component (`ChatPanel`). To locate the bad setState() call inside `ChatPanel`, follow the stack trace…"*. Worse, the final `notify(finalized)` that should persist the assistant's reply to history sometimes drops on the floor — chat history ends up with the user message but no assistant content.
+- **Root cause** — `send()` was finalising the assistant message inside a `setMessages((all) => { const finalized = …; notify(finalized); return finalized; })` updater. Updater functions run during React's render phase; calling parent `setState` (via `onMessagesChangeRef.current?.(…)`) during render is the classic "set state during render" violation. React rejects the call and warns.
+- **Fix** — In [ChatPanel.tsx](frontend/components/ChatPanel.tsx) `send()`, replaced the `setMessages((all) => …)` pattern with a local `let currentMessages` variable that we keep in sync manually, plus an `applyAssistantMutation` helper. Each stream delta updates `currentMessages` AND calls `setMessages(currentMessages)` (a regular value-form setter, not an updater function). At the end of the stream we have `currentMessages` already computed, so `notify(currentMessages)` runs outside any React render lifecycle.
+- **Files** — [frontend/components/ChatPanel.tsx](frontend/components/ChatPanel.tsx)
+- **Verified** — Sent a chat, checked sessionStorage: history entry has BOTH the user message and the full assistant content. No more React warning in the dev console.
+
+## 33. Orphan stream after chat-switch corrupted the wrong chat
+- **Severity** — Critical
+- **Area** — Frontend / async / data integrity
+- **Date fixed** — 2026-05-11
+- **Status** — ✅ Fixed
+- **Repro** — Open the Database Assistant. Send a message that triggers a long response. While the stream is still arriving, click another chat in the sidebar. The new chat (the one you switched away from) keeps streaming in the background. When it finishes, its assistant message gets persisted under the *currently active* chat's id — **overwriting an unrelated conversation's reply**.
+- **Root cause** — Two compounding issues:
+  1. The fetch had no `AbortController`. Unmounting `ChatPanel` (via the `chatLoadKey` remount key) didn't cancel the in-flight HTTP read; the async `send()` continued to completion in the JS event loop.
+  2. The parent's `handleChatMessagesChange` callback routed history updates via `activeIdRef.current` — the *currently active* chat. So the orphan's final `notify(finalized)` landed on whichever chat the user had selected by that point, not the original one.
+- **Fix** — Two changes:
+  1. `ChatPanel` now creates an `AbortController` per `send()`. An unmount-cleanup `useEffect` aborts it; `clearChat` also aborts it. The fetch's read loop throws `AbortError` on cancellation, which we swallow without notifying the parent (so the orphan can't post a misleading "Network error" against the original chat).
+  2. Added a `chatIdRef` to `ChatPanel`. Either seeded from `initialChatId` (when restoring a chat from history) or minted on the first `send()`. The `notify(...)` signature is now `(chatId, messages)` — the chatId is captured in the closure, so the parent always routes to THIS chat's history entry, even if the user has since switched away.
+  3. `page.tsx` `handleChatMessagesChange` was rewritten to upsert by `chatId` rather than reading `activeIdRef`. The old `activeIdRef` plumbing is gone.
+- **Files** — [frontend/components/ChatPanel.tsx](frontend/components/ChatPanel.tsx), [frontend/app/page.tsx](frontend/app/page.tsx)
+- **Verified** — Planted a pristine "B-tree" chat in history. Started a new chat with a long-essay prompt, immediately clicked the B-tree entry (≤30 ms after submit). Waited 20 s for the orphan stream to land. The B-tree chat's content is unchanged; the abandoned "essay" chat shows only the user message (per #34 below).
+
+## 34. Aborted chat persisted an empty assistant placeholder
+- **Severity** — Low (UX)
+- **Area** — Frontend / state
+- **Date fixed** — 2026-05-11
+- **Status** — ✅ Fixed
+- **Repro** — Send a chat, switch chats before the first delta arrives. The aborted chat shows up in history with `messages = [user, empty-assistant]`. Click it later: the user message renders, but the assistant bubble is completely empty — looks broken.
+- **Root cause** — The user-submission `notify(nextMessages)` fires immediately after appending `[user, placeholder({content: "", streaming: true})]`. The notify helper strips `streaming: true` but keeps the empty-content bubble. If the stream gets aborted (via #33's fix), the chat persists in that intermediate "user + empty bubble" state.
+- **Fix** — `notify()` in [ChatPanel.tsx](frontend/components/ChatPanel.tsx) now also filters out assistant messages with empty `content` BEFORE handing off to the parent. Empty assistant bubbles only matter inside the *running* ChatPanel for the typing indicator UX; persisting them is just noise. Real "(empty reply)" responses go through a different code path that fills the content first.
+- **Files** — [frontend/components/ChatPanel.tsx](frontend/components/ChatPanel.tsx)
+- **Verified** — Repeated the abort test from #33. The aborted chat's persisted state is `messages: [user]` — single message, no placeholder. Clicking it shows just the user's question, ready for a follow-up.
+
+## 35. Deleting the active chat from the sidebar left a "ghost" pane
+- **Severity** — Medium
+- **Area** — Frontend / state
+- **Date fixed** — 2026-05-11
+- **Status** — ✅ Fixed
+- **Repro** — Open a chat from the sidebar, then hover the same entry and click its trash button. The entry disappears from the sidebar — but ChatPanel keeps rendering the deleted conversation. Worse, if the user then types a follow-up message, `chatIdRef` in ChatPanel still holds the deleted id, so the next `notify` resurrects the entry under that id.
+- **Root cause** — `onDelete` was `(id) => setHistory((h) => h.filter((x) => x.id !== id))`. It removed the entry but didn't touch `activeId` or `chatLoadKey`, so ChatPanel's `key` never changed → no remount → stale internal state.
+- **Fix** — In [page.tsx](frontend/app/page.tsx), the delete handler now checks whether the deleted id was active. If so it resets the panel: `setActiveId(null)`, plus `setChatLoadKey(n => n + 1)` (chat mode) to remount ChatPanel with empty state, or `setSql/setResult/setError` resets (optimize mode).
+- **Files** — [frontend/app/page.tsx](frontend/app/page.tsx)
+- **Verified** — Planted a chat, clicked it to load, clicked its delete button. Sidebar shows "No items"; ChatPanel returns to the welcome state; sessionStorage history is `[]`.

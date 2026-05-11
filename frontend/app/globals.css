@@ -249,6 +249,15 @@ body {
 }
 .fade-up { animation: fade-up 220ms ease-out both; }
 
+/* Blinking caret shown at the tail of a streaming assistant message —
+   mimics the GPT / Claude "typing" cue. Width / colour are set inline on
+   the element so it tints to whatever accent the theme is using. */
+@keyframes streaming-caret-blink {
+  0%, 50%  { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.streaming-caret { animation: streaming-caret-blink 1s steps(1, end) infinite; }
+
 /* Honour the OS-level "reduce motion" preference. Users who set this in
    their accessibility settings get instant transitions everywhere — no
    sliding sidebars, no fade-ups, no pulsing dots. We keep colour-only

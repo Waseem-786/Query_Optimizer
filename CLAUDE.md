@@ -95,34 +95,43 @@ Output is always a JSON CLOB — `{"status":"SUCCESS",…}` or `{"status":"ERROR
 | `oracle/plan-tree` | `EXPLAIN PLAN` + reads `PLAN_TABLE` directly | Returns hierarchical nodes for the flowchart |
 | `oracle/schema` | `ALL_TABLES`, `ALL_INDEXES`, `ALL_TAB_COL_STATISTICS`, … | Per-table rows / blocks / PK / FK / indexes / per-column NDV. Fed to the LLM as grounding context |
 | `oracle/benchmark` | `VALIDATION_ENGINE_PKG.VALIDATE_AND_BENCHMARK` | Phase 4 |
-| `analyze` | `generateRewrite` in `lib/llm.ts` | AI rewrite. Returns `AIAnalysis` |
-| `chat` | `generateChatReply` in `lib/llm.ts` | Database Assistant chat (multi-turn, stateless route) |
+| `analyze` | `generateRewrite` in `lib/llm.ts` | AI rewrite. Returns `AIAnalysis` (decision, confidence, issues, optimized_queries, explanation, recommended_indexes) |
+| `chat` | `generateChatReplyStream` in `lib/llm.ts` | Database Assistant chat. **Streams** NDJSON events (`meta` / `delta` / `done` / `error`) — UI renders tokens as they arrive |
+| `llm-status` | `providerStatus()` in `lib/llm.ts` | Reports which LLM providers are configured. Used by the model-picker UI to render availability dots |
 
 `lib/oracle.ts` centralises connection handling: `openConnection`, `safeClose`, `readClob`, `parseOracleJson`, and an `OracleRouteError` with status-code routing for clean 503 vs 400 responses.
 
-`lib/llm.ts` picks `gemini` or `anthropic` based on env (`LLM_PROVIDER` override, otherwise auto-detect by which key is set; Gemini wins when both are present because it's the free path). Two prompt sets:
-- `SYSTEM_PROMPT` for `generateRewrite` — strict Oracle dialect rules (A–I), self-check checklist, structured-JSON output schema
-- `CHAT_SYSTEM_PROMPT` for `generateChatReply` — DB-only scope guardrail; off-topic questions get a polite refusal
+`lib/llm.ts` picks `gemini`, `anthropic`, or `claude-code` based on (1) explicit override from the request body via the UI picker, (2) `LLM_PROVIDER` env, (3) auto-detect by which API key is present. Gemini wins ties because it's the free path. Three prompt sets:
+- `SYSTEM_PROMPT` for `generateRewrite` — strict Oracle dialect rules (A–I), self-check checklist, structured-JSON output schema (includes optional `recommended_indexes: string[]`)
+- `CHAT_SYSTEM_PROMPT` for chat — DB-only scope guardrail; off-topic questions get a polite refusal
+- The same prompts are reused for the streaming chat path (`generateChatReplyStream`)
 
-Both routes detect 429 / quota / `RESOURCE_EXHAUSTED` errors and return a friendly `code: "RATE_LIMIT"` payload instead of the raw SDK JSON.
+`claude-code` uses `@anthropic-ai/claude-agent-sdk` which spawns the local `claude` CLI for OAuth — no separate API key needed if Claude Code is installed and logged in. Significantly slower than Gemini (~5 s spawn + minutes of model time) but uses the user's existing subscription.
+
+Both LLM routes detect 429 / quota / `RESOURCE_EXHAUSTED` errors and return a friendly `code: "RATE_LIMIT"` payload instead of the raw SDK JSON.
 
 ### Frontend UI (`frontend/`)
 
-Top-level entry: `app/page.tsx` (~250 lines). Owns:
+Top-level entry: `app/page.tsx`. Owns:
 - Connection state (sessionStorage `querymind.connection.v2`)
-- Optimize history (sessionStorage `querymind.history.v1`, capped at 30 entries with the full `OptimizeResult`)
+- Unified history (sessionStorage `querymind.history.v1`, capped at 30 entries). Each entry is either an Optimize run (full `OptimizeResult`) or a chat conversation (`messages[]`). The sidebar filters by current mode.
+- LLM provider preference (sessionStorage `querymind.llm.provider.v1`) via the `useLlmProvider()` hook in `lib/use-llm-provider.ts`
 - Sidebar collapse state (sessionStorage `querymind.sidebar.collapsed.v1`)
+- Current optimize pipeline phase (used to drive the real progress indicator — see below)
 - Race-condition guard via `runIdRef` — newer Optimize runs invalidate older awaited responses
 - Pre-flight checks: empty editor, comment-only content, `{your_table}`-style placeholders all short-circuit before the network call
+- `chatLoadKey` counter — bumped on deliberate chat switches (sidebar click / "New chat"); ChatPanel is keyed off it so React remounts with fresh state. Not bumped during normal first-send, so the new chat doesn't unmount mid-stream.
 
 Components:
-- `Sidebar.tsx` — two layouts (full 280 px / rail 56 px) inside a single `<aside>` that animates `width` 220 ms; logo doubles as the toggle. History list + search hide on the rail.
+- `Sidebar.tsx` — two layouts (full 280 px / rail 56 px) inside a single `<aside>` that animates `width` 220 ms; logo doubles as the toggle. History list + search hide on the rail. The trash icon on an active history row deselects the panel + bumps `chatLoadKey` so the now-deleted chat doesn't keep rendering.
 - `QueryEditor.tsx` — textarea + transparent-text overlay for SQL highlighting; gutter; `useShortcutKeyLabel()` hook chooses ⌘ for Mac and Ctrl elsewhere; sample buttons confirm before overwriting user edits.
-- `ResultsPanel.tsx` — Plan / Rules / Rewrite / Benchmark tabs. Plan tab has a Flowchart/Table view toggle and a Fullscreen modal portaled to `document.body`. `Stat` pill renders an arrow only when `before !== after`.
+- `ResultsPanel.tsx` — **five** tabs: Plan / Rules / Rewrite / Recommendation / Benchmark. Plan tab has a Flowchart/Table view toggle and a Fullscreen modal portaled to `document.body`. Rewrite tab shows pure SQL only (no comments, no markdown). Recommendation tab renders the AI's diagnosis (issues), rationale (why_inefficient / why_better), trade-offs, and **Suggested indexes** section with copy-button per DDL. `Stat` pill renders an arrow only when `before !== after`.
 - `PlanFlowchart.tsx` — SVG hierarchical tree with subtree-width centering and orthogonal connectors; colour-coded nodes (Root, Index access, Full scan, Join, Sort/aggregate, Pipeline).
 - `ConnectionModal.tsx` — re-syncs form state with `current` prop on open; closes on Esc.
 - `ErrorModal.tsx` — centered, portal-rendered, body-scroll-locked, Esc/click-outside dismiss.
-- `ChatPanel.tsx` — wraps `/api/chat` calls; persists conversation to `querymind.chat.v1`; receives `clearSignal` from page so the sidebar's "New chat" button can reset it.
+- `SettingsModal.tsx` — gear-icon modal showing the three providers (Claude Code / Gemini / Anthropic API) with availability dots from `/api/llm-status`. Pairs with the compact `ProviderPicker.tsx` dropdown in the chat header — both consume the same `useLlmProvider()` state.
+- `ChatPanel.tsx` — **controlled** message list; parent (`page.tsx`) owns the per-chat `messages[]` and routes updates via `(chatId, messages) => …`. Streams `/api/chat` NDJSON; aborts in-flight fetch on unmount via `AbortController` so switching chats can't corrupt the wrong one. Renders assistant text via `MarkdownRender` (h1–h4, bold/italic, inline + fenced code, GFM tables, lists, links). Mid-stream messages show a blinking accent caret; pre-first-token shows a three-dot typing indicator.
+- `MarkdownRender.tsx` — wraps `react-markdown` + `remark-gfm`. Fenced ```` ```sql ```` blocks route through `SqlBlock` so chat SQL gets the same keyword/string highlighting as the Rewrite tab; other languages render as plain `<pre>`. Every fenced block gets a Copy button in its header strip.
 
 ### Phase 2 — 14 rules
 
@@ -142,10 +151,14 @@ Catalogue of 14 rules (originally 7, expanded to 14 across the precision-tuning 
 1. POST `/api/oracle/analyze` → Phase 1 + 2 results
 2. POST `/api/oracle/plan-tree` → flowchart nodes
 3. POST `/api/oracle/schema` for every `FROM` / `JOIN` table the regex extracts → per-column NDV, indexes, FKs
-4. POST `/api/analyze` with the schema + rules + plan as grounding → AI rewrites
+4. POST `/api/analyze` with the schema + rules + plan as grounding → AI rewrites + `recommended_indexes`
 5. POST `/api/oracle/benchmark` with the AI candidates → Phase 4
 
 Each step is best-effort: a failure earlier in the chain leaves later steps with their graceful empty states (e.g. AI failure → Rewrite tab shows "AI rewrite failed" with the friendly message, Benchmark tab shows "No benchmark data").
+
+`optimizeQuery()` accepts an optional `onPhase(phase)` callback that fires before each network call (`"analyze" | "plan-tree" | "schema" | "ai" | "benchmark" | "done"`). The `RunningState` component in `ResultsPanel.tsx` uses this to render a real progress checklist — replaces the old timer-based stub that sprinted through all five steps in 1.5 s while the AI step still had minutes to go.
+
+**Suggested indexes** (Recommendation tab): the AI's `recommended_indexes` field is merged with the rule engine's deterministic DDL output (`MISSING_INDEX_ON_FILTER` / `AGGREGATE_INDEX_HINT`) in `mergeIndexRecs()` — dedupes by normalised text, drops anything that doesn't start with `CREATE [UNIQUE|BITMAP]? INDEX`, caps at 10 entries. Section only renders when the merged list is non-empty.
 
 ### Phase 4 — Validation + benchmark
 
@@ -182,11 +195,11 @@ Numbers are **monotonic and never reused**. Append at the bottom; never renumber
 | Key | Purpose | Capped at |
 |---|---|---|
 | `querymind.connection.v2` | Oracle creds (per tab) | n/a |
-| `querymind.history.v1` | Optimize results with full `OptimizeResult` | 30 entries |
-| `querymind.chat.v1` | Database Assistant turns | 100 messages |
+| `querymind.history.v1` | Unified history — Optimize runs (full `OptimizeResult`) AND chat conversations (`messages[]`), distinguished by `mode` | 30 entries total |
+| `querymind.llm.provider.v1` | Active LLM provider: `claude-code` \| `gemini` \| `anthropic` | n/a |
 | `querymind.sidebar.collapsed.v1` | Rail vs full sidebar | n/a |
 
-Per-tab (sessionStorage, not localStorage) so opening a new tab gives a fresh session.
+Per-tab (sessionStorage, not localStorage) so opening a new tab gives a fresh session. The old `querymind.chat.v1` singleton-chat key was retired when each conversation became its own history entry (Bugs #32–#35).
 
 ### Race-condition guard
 
@@ -198,6 +211,8 @@ const myRunId = ++runIdRef.current;
 if (myRunId !== runIdRef.current) return;  // newer run won
 ```
 
+A similar pattern exists in `ChatPanel.tsx` but uses a different mechanism: each `send()` creates its own `AbortController`, which the unmount-cleanup effect aborts. Combined with a stable `chatIdRef` per ChatPanel instance, an orphan stream that finishes after the user switched chats can't corrupt the now-active conversation (Bug #33).
+
 ## Next.js version warning
 
 This project uses **Next.js 16.2.3 with React 19** — breaking changes vs the public training corpus. Before writing frontend code, read the relevant guide in `frontend/node_modules/next/dist/docs/`. Heed deprecation notices. (See `frontend/AGENTS.md`.)
@@ -208,6 +223,8 @@ This project uses **Next.js 16.2.3 with React 19** — breaking changes vs the p
 |---|---|
 | Phase 1 — DB-native analysis | Complete |
 | Phase 2 — Rule engine (14 rules) + index recommendations | Complete |
-| Phase 3 — AI rewrite (Gemini default, Anthropic optional) | Complete |
+| Phase 3 — AI rewrite + Recommendation tab (Claude Code default, Gemini + Anthropic API optional) | Complete |
 | Phase 4 — Validation + benchmark engine | Complete |
 | Bridge — full UI ↔ Oracle ↔ AI pipeline live | Complete |
+| Streaming chat — NDJSON streaming + markdown rendering | Complete |
+| Multi-chat history — each conversation gets its own sidebar entry | Complete |

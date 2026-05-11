@@ -6,18 +6,36 @@ import { SqlBlock } from "./SqlBlock";
 import { CopyButton } from "./CopyButton";
 import {
   IcLayers, IcList, IcSparkles, IcGauge, IcAlert, IcInfo, IcCheck,
-  IcChevronDown, IcChevronRight, IcTrendingDown, IcClock, IcX,
+  IcChevronDown, IcChevronRight, IcTrendingDown, IcClock, IcX, IcDatabase,
 } from "./icons";
-import type { OptimizeResult, PlanRow, RuleHit, RuleSeverity, PlanNode } from "./optimize-demo";
+import type {
+  OptimizeResult, PlanRow, RuleHit, RuleSeverity, PlanNode, AiAnalysisSummary,
+} from "./optimize-demo";
 import { PlanFlowchart, PlanFlowchartLegend } from "./PlanFlowchart";
 
-type Tab = "plan" | "rules" | "rewrite" | "benchmark";
+type Tab = "plan" | "rules" | "rewrite" | "recommendation" | "benchmark";
 
+// Pipeline phases reported by lib/optimize.ts via the `onPhase` callback.
+// Each one maps to a step in the RunningState progress list. Keep this in
+// sync with the labels in RunningState and the callers in optimize.ts.
+export type OptimizePhase =
+  | "analyze"     // POST /api/oracle/analyze (Phase 1 + 2)
+  | "plan-tree"   // POST /api/oracle/plan-tree
+  | "schema"      // POST /api/oracle/schema
+  | "ai"          // POST /api/analyze (LLM)
+  | "benchmark"   // POST /api/oracle/benchmark (Phase 4)
+  | "done";
+
+// Tab order: Plan → Rules (what's wrong from the DB's perspective) → Rewrite
+// (the proposed SQL, pure code, no comments) → Recommendation (the AI's
+// diagnosis + rationale + trade-offs in proper UI sections) → Benchmark
+// (proof the rewrite is faster).
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{size?: number; className?: string}> }[] = [
-  { id: "plan",      label: "Plan",      icon: IcLayers },
-  { id: "rules",     label: "Rules",     icon: IcList },
-  { id: "rewrite",   label: "Rewrite",   icon: IcSparkles },
-  { id: "benchmark", label: "Benchmark", icon: IcGauge },
+  { id: "plan",           label: "Plan",           icon: IcLayers },
+  { id: "rules",          label: "Rules",          icon: IcList },
+  { id: "rewrite",        label: "Rewrite",        icon: IcSparkles },
+  { id: "recommendation", label: "Recommendation", icon: IcInfo },
+  { id: "benchmark",      label: "Benchmark",      icon: IcGauge },
 ];
 
 const sevColor: Record<RuleSeverity, string> = {
@@ -34,14 +52,18 @@ function fmtMs(ms: number) {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
-export function ResultsPanel({ result, busy, lastQuery }: {
+export function ResultsPanel({ result, busy, lastQuery, phase }: {
   result: OptimizeResult | null;
   busy: boolean;
   lastQuery: string;
+  // Current pipeline phase. Drives which step in the RunningState progress
+  // list is highlighted as "in flight". `undefined` falls back to a sane
+  // initial value (the first step).
+  phase?: OptimizePhase;
 }) {
   const [tab, setTab] = React.useState<Tab>("plan");
 
-  if (busy && !result) return <RunningState />;
+  if (busy && !result) return <RunningState phase={phase} />;
   if (!result) return <EmptyState />;
 
   return (
@@ -98,7 +120,19 @@ export function ResultsPanel({ result, busy, lastQuery }: {
           <PlanTab plan={result.plan} planTree={result.planTree} />
         )}
         {tab === "rules" && <RulesTab rules={result.rules} />}
-        {tab === "rewrite" && <RewriteTab original={lastQuery} rewrite={result.rewrite} />}
+        {tab === "rewrite" && (
+          <RewriteTab
+            original={lastQuery}
+            rewrite={result.rewrite}
+            ai={result.aiAnalysis}
+          />
+        )}
+        {tab === "recommendation" && (
+          <RecommendationTab
+            ai={result.aiAnalysis}
+            rewrite={result.rewrite}
+          />
+        )}
         {tab === "benchmark" && <BenchTab b={result.benchmark} />}
       </div>
     </div>
@@ -452,7 +486,15 @@ function RuleCard({ rule }: { rule: RuleHit }) {
   );
 }
 
-function RewriteTab({ original, rewrite }: { original: string; rewrite: string }) {
+function RewriteTab({
+  original,
+  rewrite,
+  ai,
+}: {
+  original: string;
+  rewrite: string;
+  ai?: AiAnalysisSummary;
+}) {
   const trimmed = (rewrite ?? "").trim();
   const noRewrite =
     !trimmed ||
@@ -461,6 +503,10 @@ function RewriteTab({ original, rewrite }: { original: string; rewrite: string }
   // Pull the message after "AI rewrite unavailable:" / "not generated:" if present
   const errorMatch = trimmed.match(/(?:unavailable|not generated|not available):\s*(.+)/i);
   const errorMessage = errorMatch ? errorMatch[1].trim() : null;
+  // Provider / confidence badge in the rewrite header. The "why" (issues,
+  // explanation, trade-offs) lives in the Recommendation tab now; only
+  // model metadata stays here since it labels the SQL itself.
+  const confidencePct = ai ? Math.round((ai.confidence ?? 0) * 100) : null;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-default fade-up h-full">
       <div className="bg-surface flex flex-col">
@@ -477,10 +523,15 @@ function RewriteTab({ original, rewrite }: { original: string; rewrite: string }
         </div>
       </div>
       <div className="bg-surface flex flex-col">
-        <div className="px-4 h-9 border-b border-default flex items-center justify-between shrink-0">
-          <div className="text-[11.5px] uppercase tracking-wide font-semibold flex items-center gap-1.5">
-            <IcSparkles size={11} className="text-accent" />
-            <span className="text-gradient-brand">AI rewrite</span>
+        <div className="px-4 h-9 border-b border-default flex items-center justify-between shrink-0 gap-2">
+          <div className="text-[11.5px] uppercase tracking-wide font-semibold flex items-center gap-1.5 min-w-0">
+            <IcSparkles size={11} className="text-accent shrink-0" />
+            <span className="text-gradient-brand shrink-0">AI rewrite</span>
+            {ai && (
+              <span className="text-[10.5px] text-dim normal-case font-normal tracking-normal truncate">
+                · {ai.provider}/{ai.model} · {confidencePct}% confidence
+              </span>
+            )}
           </div>
           <CopyButton text={rewrite} />
         </div>
@@ -501,6 +552,204 @@ function RewriteTab({ original, rewrite }: { original: string; rewrite: string }
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// RecommendationTab
+// ----------------------------------------------------------------------------
+// Renders the AI's diagnosis + rationale + trade-offs as proper UI sections.
+// Replaces the "stuff it in SQL comments at the bottom of the Rewrite" pattern
+// — comments don't render in markdown, can't be scanned at a glance, and made
+// the Rewrite tab impossible to copy/paste as clean SQL.
+//
+// Sections (top-to-bottom = "diagnosis → fix rationale → caveats"):
+//   1. Header: decision badge (NEEDS_IMPROVEMENT / ALREADY_OPTIMIZED / POOR)
+//      + confidence bar
+//   2. "What's wrong" — issues[] as a checklist
+//   3. "Why the original is slow" — explanation.why_inefficient
+//   4. "Why the rewrite is better" — explanation.why_better
+//   5. "Trade-offs to know about" — explanation.trade_offs
+// ============================================================================
+function RecommendationTab({
+  ai,
+  rewrite,
+}: {
+  ai?: AiAnalysisSummary;
+  rewrite: string;
+}) {
+  // Reuse the rewrite "is empty" detection so the empty state matches between
+  // the two tabs — if Rewrite shows "AI rewrite failed", Recommendation
+  // should too, with the same friendly copy.
+  const trimmed = (rewrite ?? "").trim();
+  const errorMatch = trimmed.match(/(?:unavailable|not generated|not available):\s*(.+)/i);
+  const errorMessage = errorMatch ? errorMatch[1].trim() : null;
+
+  if (!ai) {
+    return (
+      <EmptyTabState
+        icon={IcInfo}
+        title={errorMessage ? "Recommendation unavailable" : "No recommendation yet"}
+        body={
+          errorMessage
+            ? errorMessage
+            : "The AI didn't return a recommendation. Run an Optimize on a real query, or pick a different AI provider in Settings (gear icon in the sidebar)."
+        }
+      />
+    );
+  }
+
+  const confidencePct = Math.round((ai.confidence ?? 0) * 100);
+  const decisionColor =
+    ai.decision === "ALREADY_OPTIMIZED" ? "text-success border-[color:var(--color-success)]/40 bg-success-soft" :
+    ai.decision === "POOR"              ? "text-danger  border-[color:var(--color-danger)]/40  bg-danger-soft"  :
+    /* NEEDS_IMPROVEMENT */               "text-warn    border-[color:var(--color-warn)]/40    bg-warn-soft";
+  const decisionLabel =
+    ai.decision === "ALREADY_OPTIMIZED" ? "Already optimized" :
+    ai.decision === "POOR"              ? "Poor — significant issues" :
+    /* NEEDS_IMPROVEMENT */               "Needs improvement";
+
+  const hasIssues   = ai.issues && ai.issues.length > 0;
+  const hasWhyBad   = ai.explanation.why_inefficient?.trim().length > 0;
+  const hasWhyGood  = ai.explanation.why_better?.trim().length > 0;
+  const hasTradeoffs = ai.explanation.trade_offs?.trim().length > 0;
+  const hasIndexes  = !!ai.recommended_indexes && ai.recommended_indexes.length > 0;
+
+  return (
+    <div className="p-5 space-y-4 fade-up max-w-[920px]">
+      {/* Header: decision + confidence */}
+      <div className={`card border-l-4 ${decisionColor} p-4`}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <IcSparkles size={13} className="text-accent" />
+          <span className="text-[13px] font-semibold">{decisionLabel}</span>
+          <span className="text-[11px] text-dim">·</span>
+          <span className="text-[11px] text-dim">
+            {ai.candidate_label} · {ai.provider}/{ai.model}
+          </span>
+        </div>
+        <div className="mt-3">
+          <div className="flex items-center gap-2 text-[11.5px] text-muted mb-1.5">
+            <span>Confidence</span>
+            <span className="ml-auto tabular-nums font-mono-app text-fg">
+              {confidencePct}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-surface-2 overflow-hidden">
+            <div
+              className="h-full bg-gradient-brand"
+              style={{ width: `${confidencePct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Issues — what's wrong with the original */}
+      {hasIssues && (
+        <RecSection icon={IcAlert} title="What's wrong with the original">
+          <ul className="space-y-1.5">
+            {ai.issues.map((issue, i) => (
+              <li key={i} className="flex items-start gap-2 text-[12.5px] text-fg leading-relaxed">
+                <span className="w-1.5 h-1.5 rounded-full bg-warn mt-2 shrink-0" />
+                <span>{issue}</span>
+              </li>
+            ))}
+          </ul>
+        </RecSection>
+      )}
+
+      {/* Why inefficient */}
+      {hasWhyBad && (
+        <RecSection icon={IcInfo} title="Why the original is slow">
+          <Prose>{ai.explanation.why_inefficient}</Prose>
+        </RecSection>
+      )}
+
+      {/* Why better */}
+      {hasWhyGood && (
+        <RecSection icon={IcCheck} title="Why the rewrite is better" accent>
+          <Prose>{ai.explanation.why_better}</Prose>
+        </RecSection>
+      )}
+
+      {/* Suggested indexes — only when the rule engine or AI proposed
+          something. Each entry is a copyable CREATE INDEX DDL the user
+          can paste straight into SQL Developer / sqlplus. */}
+      {hasIndexes && (
+        <RecSection icon={IcDatabase} title="Suggested indexes">
+          <p className="text-[11.5px] text-dim mb-2.5 leading-relaxed">
+            Optional. The AI suggested these would help the rewrite — review
+            the table&apos;s existing index list (Plan tab → &ldquo;Indexes used&rdquo;) before
+            running any of them.
+          </p>
+          <ul className="space-y-2">
+            {ai.recommended_indexes!.map((ddl, i) => (
+              <li
+                key={i}
+                className="rounded-md border border-default bg-surface-2 px-3 py-2 flex items-start gap-2"
+              >
+                <code className="flex-1 text-[12px] font-mono-app text-fg whitespace-pre-wrap break-words leading-relaxed">
+                  {ddl}
+                </code>
+                <CopyButton text={ddl} />
+              </li>
+            ))}
+          </ul>
+        </RecSection>
+      )}
+
+      {/* Trade-offs */}
+      {hasTradeoffs && (
+        <RecSection icon={IcAlert} title="Trade-offs to know about">
+          <Prose>{ai.explanation.trade_offs}</Prose>
+        </RecSection>
+      )}
+
+      {!hasIssues && !hasWhyBad && !hasWhyGood && !hasTradeoffs && !hasIndexes && (
+        <div className="card p-4 text-[12.5px] text-muted">
+          The AI returned a rewrite but no narrative explanation. Compare the
+          Original and Rewrite tabs side-by-side, or run the Benchmark tab to
+          see whether the rewrite is actually faster.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecSection({
+  icon: Icon,
+  title,
+  accent,
+  children,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  accent?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`card p-4 ${accent ? "border-l-4 border-[color:var(--color-accent)]" : ""}`}>
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+          accent ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted"
+        }`}>
+          <Icon size={12} />
+        </div>
+        <div className="text-[12.5px] font-semibold">{title}</div>
+      </div>
+      <div className="ml-8">{children}</div>
+    </div>
+  );
+}
+
+// Renders an AI explanation paragraph. We split on double-newlines so the
+// model's multi-paragraph answers don't collapse into one blob, but we don't
+// run a full markdown parser — these strings are short and structured.
+function Prose({ children }: { children: string }) {
+  const paragraphs = children.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  return (
+    <div className="space-y-2 text-[12.5px] text-fg/90 leading-relaxed">
+      {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
     </div>
   );
 }
@@ -819,10 +1068,29 @@ function EmptyTabState({
 
 function EmptyState() {
   const items = [
-    { icon: IcLayers, label: "Execution plan",  desc: "Step-by-step EXPLAIN with cost & rows" },
-    { icon: IcList,   label: "Rule analysis",   desc: "Catches anti-patterns you'd miss in review" },
-    { icon: IcSparkles, label: "AI rewrite",    desc: "A side-by-side optimized version" },
-    { icon: IcGauge,  label: "Benchmark",       desc: "Before vs after, with speedup factor" },
+    {
+      icon: IcLayers,
+      label: "Execution plan",
+      desc: "Step-by-step EXPLAIN with cost & rows",
+    },
+    {
+      icon: IcList,
+      label: "Rule analysis",
+      desc: "Catches anti-patterns you'd miss in review",
+    },
+    {
+      icon: IcSparkles,
+      label: "AI rewrite",
+      // Now reflects the full AI output: the rewritten SQL on the Rewrite
+      // tab plus the diagnosis + trade-offs + suggested CREATE INDEX DDL on
+      // the Recommendation tab.
+      desc: "Rewritten SQL plus diagnosis, trade-offs & index suggestions",
+    },
+    {
+      icon: IcGauge,
+      label: "Benchmark",
+      desc: "Before vs after, with speedup factor",
+    },
   ];
   return (
     <div className="flex-1 h-full flex items-center justify-center p-8 bg-grid bg-grid-fade">
@@ -833,8 +1101,9 @@ function EmptyState() {
         <h2 className="text-[20px] font-semibold tracking-tight mb-1.5">Tune your first query</h2>
         <p className="text-[13px] text-muted leading-relaxed">
           Paste a slow Oracle query on the left and hit{" "}
-          <span className="text-fg font-medium">Optimize</span>. You&apos;ll see plan, rules,
-          a rewrite, and a benchmark — all in one place.
+          <span className="text-fg font-medium">Optimize</span>. You&apos;ll see the plan,
+          rule findings, an AI rewrite with recommendations, and a benchmark —
+          all in one place.
         </p>
         <div className="mt-6 grid grid-cols-2 gap-2 text-left">
           {items.map(({ icon: Icon, label, desc }) => (
@@ -850,44 +1119,65 @@ function EmptyState() {
   );
 }
 
-function RunningState() {
-  const steps = [
-    "Parsing query…",
-    "Building EXPLAIN PLAN…",
-    "Running rule engine…",
-    "Generating AI rewrite…",
-    "Benchmarking…",
-  ];
-  const [step, setStep] = React.useState(0);
-  React.useEffect(() => {
-    const t = setInterval(() => setStep(s => Math.min(s + 1, steps.length - 1)), 280);
-    return () => clearInterval(t);
-  }, []);
+// Step list mapped one-to-one with the OptimizePhase values reported by
+// lib/optimize.ts. Order MUST match the order of the API calls there —
+// otherwise the indicator races ahead of (or lags behind) the actual work.
+//
+// Was previously driven by `setInterval(280ms)` that sprinted to the end
+// in under 1.5 s, leaving users staring at "Benchmarking…" while the AI
+// step actually had several more minutes to go. The hardcoded timer is
+// gone — the step now reflects a real pipeline phase emitted by the
+// optimize() promise.
+const STEP_LIST: { phase: OptimizePhase; label: string; hint?: string }[] = [
+  { phase: "analyze",    label: "Running Oracle analysis",   hint: "EXPLAIN PLAN + 14-rule engine" },
+  { phase: "plan-tree",  label: "Building plan flowchart" },
+  { phase: "schema",     label: "Reading schema metadata",   hint: "indexes, NDV, FKs" },
+  { phase: "ai",         label: "Generating AI rewrite",     hint: "Claude Code can take 1–6 minutes" },
+  { phase: "benchmark",  label: "Validating & benchmarking", hint: "MINUS check + timed runs" },
+];
+
+function RunningState({ phase = "analyze" }: { phase?: OptimizePhase }) {
+  const activeIdx = phase === "done"
+    ? STEP_LIST.length
+    : Math.max(0, STEP_LIST.findIndex((s) => s.phase === phase));
+  // Tagline reflects realistic timing. The first three phases combined
+  // usually finish in <30 s; the AI step is the dominant cost and varies
+  // wildly by provider (Gemini ~3-5 s, Claude Code ~1-6 min).
+  const tagline =
+    activeIdx < 3 ? "This usually takes a few seconds." :
+    activeIdx === 3 ? "AI rewrite in progress — may take a minute or two." :
+    activeIdx === 4 ? "Timing the rewrite against the original…" :
+                      "Almost done.";
   return (
     <div className="flex-1 h-full flex items-center justify-center p-8 bg-grid bg-grid-fade">
-      <div className="w-full max-w-[360px]">
+      <div className="w-full max-w-[400px]">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl bg-accent-soft border border-default flex items-center justify-center">
             <span className="inline-block w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
           </div>
           <div>
             <div className="text-[14px] font-semibold">Optimizing</div>
-            <div className="text-[12px] text-muted">This usually takes a few seconds.</div>
+            <div className="text-[12px] text-muted">{tagline}</div>
           </div>
         </div>
         <ul className="space-y-2.5">
-          {steps.map((s, i) => (
-            <li key={s} className="flex items-center gap-2.5 text-[12.5px]">
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
-                i < step ? "bg-success-soft text-success" :
-                i === step ? "bg-accent-soft text-accent" :
+          {STEP_LIST.map((s, i) => (
+            <li key={s.phase} className="flex items-start gap-2.5 text-[12.5px]">
+              <span className={`w-4 h-4 mt-0.5 rounded-full flex items-center justify-center shrink-0 ${
+                i < activeIdx ? "bg-success-soft text-success" :
+                i === activeIdx ? "bg-accent-soft text-accent" :
                 "bg-surface-2 text-dim"
               }`}>
-                {i < step ? <IcCheck size={10} /> : i === step ? (
+                {i < activeIdx ? <IcCheck size={10} /> : i === activeIdx ? (
                   <span className="w-1.5 h-1.5 rounded-full bg-current pulse-dot" />
                 ) : null}
               </span>
-              <span className={i <= step ? "text-fg" : "text-dim"}>{s}</span>
+              <div className="leading-tight">
+                <div className={i <= activeIdx ? "text-fg" : "text-dim"}>{s.label}</div>
+                {s.hint && i === activeIdx && (
+                  <div className="text-[11px] text-dim mt-0.5">{s.hint}</div>
+                )}
+              </div>
             </li>
           ))}
         </ul>

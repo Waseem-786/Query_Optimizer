@@ -1,15 +1,22 @@
 // Provider abstraction for the AI rewrite step.
 //
 // The route at /api/analyze uses generateRewrite() — it picks a provider
-// based on the env, builds the prompt, calls the model, and returns a
-// structured AIAnalysis object the frontend can render.
+// based on the request body (or env), builds the prompt, calls the model,
+// and returns a structured AIAnalysis object the frontend can render.
+//
+// Providers:
+//   - gemini       — Google @google/genai SDK, free tier, structured JSON
+//   - anthropic    — Anthropic SDK, paid, requires ANTHROPIC_API_KEY
+//   - claude-code  — @anthropic-ai/claude-agent-sdk, spawns local Claude Code
+//                    using the user's OAuth credentials. No separate API key
+//                    needed if Claude Code is installed and logged in.
 //
 // Adding a new provider = one more `case` in callProvider().
 
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI, Type } from "@google/genai";
 
-export type LlmProvider = "gemini" | "anthropic";
+export type LlmProvider = "gemini" | "anthropic" | "claude-code";
 
 export interface RewriteCandidate {
   label: string;
@@ -27,6 +34,10 @@ export interface AIAnalysis {
     why_better: string;
     trade_offs: string;
   };
+  // Optional Oracle CREATE INDEX DDL the AI thinks would help. Empty / absent
+  // when existing indexes are sufficient or selectivity can't be judged.
+  // Merged with the rule engine's deterministic suggestions in lib/optimize.ts.
+  recommended_indexes?: string[];
   provider: LlmProvider;
   model: string;
 }
@@ -165,8 +176,20 @@ OUTPUT FORMAT — STRICT JSON, no markdown, no prose around it
     "why_inefficient": "Why the original is slow on Oracle specifically.",
     "why_better": "How the rewrites help (fewer scans, index usage, etc.).",
     "trade_offs": "Indexes assumed, NLS dependencies removed, candidate ordering, etc."
-  }
+  },
+  "recommended_indexes": [
+    "CREATE INDEX idx_emp_dept ON employees(dept_id)",
+    "CREATE INDEX idx_orders_cust_dt ON orders(customer_id, created_at)"
+  ]
 }
+
+RECOMMENDED_INDEXES GUIDANCE (OPTIONAL — leave as [] when not needed):
+  • Only emit a CREATE INDEX when an existing index in the schema metadata does NOT already cover the predicate, AND the predicate is selective enough that the index would meaningfully change the access path.
+  • Each entry must be a complete, parsable Oracle CREATE INDEX DDL statement. NO trailing semicolon. NO comments. Use only columns that appear in the schema metadata block — do NOT invent columns.
+  • Prefer composite indexes (leading column = most selective) when the rewrite filters on multiple columns of the same table.
+  • If the rule engine ALREADY suggested an index (visible in "Index Definitions:" of the prompt) and you agree, ECHO it back here verbatim — don't paraphrase, so deduplication works.
+  • If existing indexes are sufficient OR you cannot judge selectivity (no NDV stats), return an empty array [].
+  • This is a recommendation list — the user explicitly opted in to see it. Quality over quantity. Two well-chosen indexes beats five speculative ones.
 
 CONFIDENCE GUIDANCE:
   • 0.9-1.0 — rewrite is straightforwardly equivalent and clearly faster.
@@ -187,15 +210,65 @@ export function buildUserPrompt(req: RewriteRequest): string {
   return parts.join("\n\n");
 }
 
-export function pickProvider(): LlmProvider {
+// Reports whether each provider is configured enough to be callable, WITHOUT
+// actually calling the LLM. Used by the /api/llm-status route so the frontend
+// model picker can render availability dots and disable unconfigured options.
+//
+// `claude-code` is always reported as available — the SDK falls back to
+// spawning the local `claude` CLI for OAuth when no API key is set, so we
+// can't know for sure without trying. The actual call surfaces a friendly
+// error if the CLI isn't installed.
+export function providerStatus(): Record<LlmProvider, { available: boolean; reason?: string }> {
+  return {
+    gemini: process.env.GEMINI_API_KEY
+      ? { available: true }
+      : { available: false, reason: "GEMINI_API_KEY missing in frontend/.env.local" },
+    anthropic: process.env.ANTHROPIC_API_KEY
+      ? { available: true }
+      : { available: false, reason: "ANTHROPIC_API_KEY missing in frontend/.env.local" },
+    "claude-code": {
+      available: true,
+      reason: "Uses local Claude Code OAuth; falls back to ANTHROPIC_API_KEY if set",
+    },
+  };
+}
+
+// Pick a provider. If `override` is one of our known providers, use it (after
+// a config check). Otherwise honour LLM_PROVIDER env, otherwise auto-detect
+// by which API key is present. Gemini wins ties because it's the free path.
+export function pickProvider(override?: string | null): LlmProvider {
+  const candidates: LlmProvider[] = ["gemini", "anthropic", "claude-code"];
+
+  // Priority 1: explicit override from the request body / settings UI
+  const ov = (override || "").toLowerCase().trim();
+  if (candidates.includes(ov as LlmProvider)) {
+    const p = ov as LlmProvider;
+    // Validate the picked provider is callable. Claude-code never throws here
+    // because we can't tell without trying — the actual call surfaces auth
+    // problems with a clearer error.
+    if (p === "gemini" && !process.env.GEMINI_API_KEY) {
+      throw new LlmConfigError(
+        "Gemini is selected but GEMINI_API_KEY is missing in frontend/.env.local. Get a free key at aistudio.google.com or pick a different provider.",
+      );
+    }
+    if (p === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+      throw new LlmConfigError(
+        "Anthropic is selected but ANTHROPIC_API_KEY is missing in frontend/.env.local. Get a key at console.anthropic.com or pick a different provider.",
+      );
+    }
+    return p;
+  }
+
+  // Priority 2: LLM_PROVIDER env var
   const envProvider = (process.env.LLM_PROVIDER || "").toLowerCase().trim();
-  if (envProvider === "gemini" || envProvider === "anthropic") return envProvider;
-  // Auto-detect based on which key is present. Gemini wins ties because it's the free path.
+  if (candidates.includes(envProvider as LlmProvider)) return envProvider as LlmProvider;
+
+  // Priority 3: auto-detect by which key is set
   if (process.env.GEMINI_API_KEY) return "gemini";
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  throw new LlmConfigError(
-    "No LLM API key found. Set GEMINI_API_KEY (free at aistudio.google.com) or ANTHROPIC_API_KEY in frontend/.env.local.",
-  );
+  // Last resort: try claude-code. The local OAuth path means the SDK might
+  // still work without any env var if `claude` is installed and logged in.
+  return "claude-code";
 }
 
 // Gemini sometimes emits raw newlines inside multi-line SQL string fields,
@@ -227,6 +300,13 @@ const GEMINI_SCHEMA = {
         trade_offs:      { type: Type.STRING },
       },
       required: ["why_inefficient", "why_better", "trade_offs"],
+    },
+    // Optional — array of full CREATE INDEX DDL strings. Not in `required` so
+    // the model can return an empty array (or omit entirely) when no new
+    // index is warranted.
+    recommended_indexes: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
     },
   },
   required: ["decision", "confidence", "issues", "optimized_queries", "explanation"],
@@ -417,25 +497,122 @@ async function callAnthropicChat(messages: ChatMessage[]): Promise<{ text: strin
   return { text, model };
 }
 
-export async function generateChatReply(messages: ChatMessage[]): Promise<ChatReply> {
+// ============================================================================
+// CLAUDE CODE — uses @anthropic-ai/claude-agent-sdk
+// ============================================================================
+// The agent SDK spawns the local `claude` CLI binary, which authenticates via
+// the user's existing Claude Code OAuth credentials (~/.claude/...) OR falls
+// back to ANTHROPIC_API_KEY if set. Great for local dev where the user
+// already has a Claude Code subscription — no separate API key needed.
+//
+// We disable all built-in tools (Read/Bash/etc.) and cap maxTurns=1 so this
+// behaves like a single-shot LLM call rather than an agentic loop. Output
+// flows through the result message's `result` string field.
+//
+// Dynamic import lets us keep the SDK out of the bundle when this provider
+// isn't selected, and gives a clean error if the package or CLI is missing.
+
+async function runClaudeCodeQuery(
+  prompt: string,
+  systemPrompt: string,
+): Promise<{ text: string; model: string }> {
+  let querySdk: typeof import("@anthropic-ai/claude-agent-sdk").query;
+  try {
+    ({ query: querySdk } = await import("@anthropic-ai/claude-agent-sdk"));
+  } catch {
+    throw new LlmConfigError(
+      "@anthropic-ai/claude-agent-sdk is not installed. Run `npm install @anthropic-ai/claude-agent-sdk` in frontend/.",
+    );
+  }
+
+  const model = process.env.CLAUDE_CODE_MODEL || "sonnet";
+  const messages = querySdk({
+    prompt,
+    options: {
+      systemPrompt,
+      model,
+      // No tools — this is a one-shot LLM call, not an agent.
+      tools: [],
+      maxTurns: 1,
+    },
+  });
+
+  let resultText = "";
+  let errorReason: string | null = null;
+  try {
+    for await (const m of messages) {
+      if (m.type === "result") {
+        if (m.subtype === "success") {
+          resultText = m.result ?? "";
+        } else {
+          errorReason = `Claude Code ${m.subtype} (${m.errors?.join("; ") || "no detail"})`;
+        }
+        break;
+      }
+    }
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    // The CLI not being installed is the most common failure here — give a
+    // clearer message than the SDK's raw ENOENT.
+    if (/ENOENT|spawn.*claude|not found/i.test(raw)) {
+      throw new LlmConfigError(
+        "Claude Code CLI is not installed or not in PATH. Install it from claude.com/code and run `claude login`, or pick a different AI provider.",
+      );
+    }
+    throw new Error(`Claude Code SDK error: ${raw}`);
+  }
+
+  if (errorReason) throw new Error(errorReason);
+  if (!resultText) {
+    throw new Error("Claude Code returned no result. Check `claude login` status or pick a different provider.");
+  }
+  return { text: resultText, model: `claude-code/${model}` };
+}
+
+async function callClaudeCode(prompt: string): Promise<{ text: string; model: string }> {
+  return runClaudeCodeQuery(prompt, SYSTEM_PROMPT);
+}
+
+async function callClaudeCodeChat(messages: ChatMessage[]): Promise<{ text: string; model: string }> {
+  // Single-prompt mode — concatenate the history into one user prompt with
+  // explicit role markers. The model handles multi-turn context fine when
+  // it's presented this way; we avoid the SDK's session machinery so each
+  // request stays stateless (matching the existing /api/chat contract).
+  const flat = messages
+    .map((m) => `${m.role === "user" ? "USER" : "ASSISTANT"}: ${m.content}`)
+    .join("\n\n");
+  return runClaudeCodeQuery(flat, CHAT_SYSTEM_PROMPT);
+}
+
+export async function generateChatReply(
+  messages: ChatMessage[],
+  providerOverride?: string | null,
+): Promise<ChatReply> {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new Error("At least one message is required.");
   }
   if (messages[messages.length - 1].role !== "user") {
     throw new Error("Last message must be from the user.");
   }
-  const provider = pickProvider();
+  const provider = pickProvider(providerOverride);
   const { text, model } =
-    provider === "gemini" ? await callGeminiChat(messages) : await callAnthropicChat(messages);
+    provider === "gemini"      ? await callGeminiChat(messages)     :
+    provider === "anthropic"   ? await callAnthropicChat(messages)  :
+    /* claude-code */            await callClaudeCodeChat(messages);
   return { content: text.trim(), provider, model };
 }
 
-export async function generateRewrite(req: RewriteRequest): Promise<AIAnalysis> {
-  const provider = pickProvider();
+export async function generateRewrite(
+  req: RewriteRequest,
+  providerOverride?: string | null,
+): Promise<AIAnalysis> {
+  const provider = pickProvider(providerOverride);
   const prompt = buildUserPrompt(req);
 
   const { text, model } =
-    provider === "gemini" ? await callGemini(prompt) : await callAnthropic(prompt);
+    provider === "gemini"    ? await callGemini(prompt)    :
+    provider === "anthropic" ? await callAnthropic(prompt) :
+    /* claude-code */          await callClaudeCode(prompt);
 
   // Strip accidental markdown fences and isolate the JSON object.
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
@@ -456,4 +633,196 @@ export async function generateRewrite(req: RewriteRequest): Promise<AIAnalysis> 
   }
 
   return { ...parsed, provider, model };
+}
+
+// ============================================================================
+// CHAT — STREAMING variant
+// ----------------------------------------------------------------------------
+// generateChatReplyStream yields incremental events the route handler can
+// forward to the browser as the model emits tokens. Each event is one of:
+//   { type: "meta",  provider, model }   — once, at the start
+//   { type: "delta", text }              — many, as tokens arrive
+//   { type: "done"  }                    — once, when finished
+//   { type: "error", message }           — instead of "done" on failure
+//
+// The non-streaming generateChatReply() above stays available for callers
+// that just want the final string; the route uses this one so the UI can
+// render tokens as they arrive (ChatGPT / Claude style).
+// ============================================================================
+
+export type ChatStreamEvent =
+  | { type: "meta";  provider: LlmProvider; model: string }
+  | { type: "delta"; text: string }
+  | { type: "done" }
+  | { type: "error"; message: string; code?: "LLM_CONFIG" | "RATE_LIMIT" };
+
+export async function* generateChatReplyStream(
+  messages: ChatMessage[],
+  providerOverride?: string | null,
+): AsyncGenerator<ChatStreamEvent, void, void> {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    yield { type: "error", message: "At least one message is required." };
+    return;
+  }
+  if (messages[messages.length - 1].role !== "user") {
+    yield { type: "error", message: "Last message must be from the user." };
+    return;
+  }
+
+  let provider: LlmProvider;
+  try {
+    provider = pickProvider(providerOverride);
+  } catch (err) {
+    if (err instanceof LlmConfigError) {
+      yield { type: "error", message: err.message, code: "LLM_CONFIG" };
+      return;
+    }
+    yield { type: "error", message: err instanceof Error ? err.message : String(err) };
+    return;
+  }
+
+  // Resolve the model name before streaming starts so the meta event has it.
+  // Each provider falls back to a sensible default when no env override is set.
+  const model =
+    provider === "gemini"
+      ? (process.env.GEMINI_MODEL || "gemini-2.5-flash")
+      : provider === "anthropic"
+      ? (process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6")
+      : `claude-code/${process.env.CLAUDE_CODE_MODEL || "sonnet"}`;
+  yield { type: "meta", provider, model };
+
+  try {
+    const tokenStream =
+      provider === "gemini"      ? streamGeminiChat(messages)     :
+      provider === "anthropic"   ? streamAnthropicChat(messages)  :
+      /* claude-code */            streamClaudeCodeChat(messages);
+    for await (const text of tokenStream) {
+      if (text) yield { type: "delta", text };
+    }
+    yield { type: "done" };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isRateLimit = /429|quota|rate.?limit|RESOURCE_EXHAUSTED/i.test(msg);
+    yield {
+      type: "error",
+      message: isRateLimit
+        ? "The free-tier rate limit was exceeded. Wait ~1 minute (or check your daily quota at aistudio.google.com) and try again."
+        : msg,
+      code: isRateLimit ? "RATE_LIMIT" : undefined,
+    };
+  }
+}
+
+// --- Gemini streaming ---
+async function* streamGeminiChat(messages: ChatMessage[]): AsyncGenerator<string, void, void> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new LlmConfigError("GEMINI_API_KEY is missing in frontend/.env.local.");
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const client = new GoogleGenAI({ apiKey });
+  const stream = await client.models.generateContentStream({
+    model,
+    contents: mapHistoryToGemini(messages),
+    config: {
+      systemInstruction: CHAT_SYSTEM_PROMPT,
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  for await (const chunk of stream) {
+    const t = chunk.text;
+    if (t) yield t;
+  }
+}
+
+// --- Anthropic streaming ---
+async function* streamAnthropicChat(messages: ChatMessage[]): AsyncGenerator<string, void, void> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new LlmConfigError("ANTHROPIC_API_KEY is missing in frontend/.env.local.");
+  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+  const client = new Anthropic({ apiKey });
+  const stream = client.messages.stream({
+    model,
+    max_tokens: 8192,
+    system: CHAT_SYSTEM_PROMPT,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+  });
+  for await (const event of stream) {
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta" &&
+      event.delta.text
+    ) {
+      yield event.delta.text;
+    }
+  }
+}
+
+// --- Claude Code streaming ---
+// Reuses the same prompt-flattening as the non-streaming path (concatenate
+// USER:/ASSISTANT: turns) so server-side scope guard stays identical. The SDK
+// emits `stream_event` envelopes wrapping Anthropic's raw deltas when
+// includePartialMessages: true is set.
+async function* streamClaudeCodeChat(messages: ChatMessage[]): AsyncGenerator<string, void, void> {
+  let querySdk: typeof import("@anthropic-ai/claude-agent-sdk").query;
+  try {
+    ({ query: querySdk } = await import("@anthropic-ai/claude-agent-sdk"));
+  } catch {
+    throw new LlmConfigError(
+      "@anthropic-ai/claude-agent-sdk is not installed. Run `npm install @anthropic-ai/claude-agent-sdk` in frontend/.",
+    );
+  }
+  const flat = messages
+    .map((m) => `${m.role === "user" ? "USER" : "ASSISTANT"}: ${m.content}`)
+    .join("\n\n");
+  const model = process.env.CLAUDE_CODE_MODEL || "sonnet";
+
+  let sawAnyText = false;
+  try {
+    const q = querySdk({
+      prompt: flat,
+      options: {
+        systemPrompt: CHAT_SYSTEM_PROMPT,
+        model,
+        tools: [],
+        maxTurns: 1,
+        includePartialMessages: true,
+      },
+    });
+    for await (const m of q) {
+      if (m.type === "stream_event") {
+        const ev = m.event;
+        if (
+          ev.type === "content_block_delta" &&
+          ev.delta.type === "text_delta" &&
+          ev.delta.text
+        ) {
+          sawAnyText = true;
+          yield ev.delta.text;
+        }
+      } else if (m.type === "result") {
+        // If the SDK didn't emit partial deltas (older Claude Code build),
+        // fall back to emitting the final text in one chunk so the user
+        // still sees a reply.
+        if (!sawAnyText && m.subtype === "success" && m.result) {
+          yield m.result;
+        }
+        if (m.subtype !== "success") {
+          throw new Error(
+            `Claude Code ${m.subtype}` +
+              (m.errors?.length ? `: ${m.errors.join("; ")}` : ""),
+          );
+        }
+        break;
+      }
+    }
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (/ENOENT|spawn.*claude|not found/i.test(raw)) {
+      throw new LlmConfigError(
+        "Claude Code CLI is not installed or not in PATH. Install it from claude.com/code and run `claude login`, or pick a different AI provider.",
+      );
+    }
+    throw err;
+  }
 }

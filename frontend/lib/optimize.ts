@@ -169,6 +169,32 @@ export interface OptimizeError {
   message: string;
 }
 
+// Merge index recommendations from two sources (rule engine + AI), dedupe
+// by a normalised key, drop entries that aren't recognisable CREATE INDEX
+// statements, and cap at a reasonable count so the Recommendation tab
+// doesn't get spammed by a hallucinating model.
+//
+// Normalisation: lowercase + whitespace collapse + strip trailing semicolon.
+// This catches the common case where the AI echoes a rule-engine suggestion
+// with slightly different spacing or casing.
+function mergeIndexRecs(...sources: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const CREATE_INDEX_RE = /^\s*CREATE\s+(UNIQUE\s+|BITMAP\s+)?INDEX\b/i;
+  for (const src of sources) {
+    for (const raw of src) {
+      const trimmed = raw.trim().replace(/;+\s*$/, "");
+      if (!CREATE_INDEX_RE.test(trimmed)) continue;
+      const key = trimmed.toLowerCase().replace(/\s+/g, " ");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+      if (out.length >= 10) return out;   // hard cap — sanity guard
+    }
+  }
+  return out;
+}
+
 interface TableSchemaMeta {
   name: string;
   owner: string | null;
@@ -281,12 +307,28 @@ function formatSchemaForLlm(tables: TableSchemaMeta[]): string {
     .join("\n");
 }
 
+// Pipeline phases reported via `onPhase`. Must match ResultsPanel's
+// OptimizePhase type — kept as a local string union here to avoid an
+// import cycle between lib and components.
+export type OptimizePhase =
+  | "analyze" | "plan-tree" | "schema" | "ai" | "benchmark" | "done";
+
 export async function optimizeQuery(
   connection: ConnectionInfo,
   query: string,
+  // Optional provider override (gemini / anthropic / claude-code). Comes from
+  // the model picker in the chat header / settings modal — forwarded to
+  // /api/analyze, which passes it to pickProvider() in lib/llm.ts.
+  llmProvider?: string,
+  // Optional callback invoked BEFORE each pipeline phase begins. Lets the
+  // UI render a real progress indicator instead of the old "timer that
+  // sprints to the end in 1.5 s" placeholder. Called with "done" after the
+  // benchmark step (or any error path that gets us out cleanly).
+  onPhase?: (phase: OptimizePhase) => void,
 ): Promise<{ result: OptimizeResult; logId: number | null } | { error: OptimizeError }> {
   let res: Response;
   try {
+    onPhase?.("analyze");
     res = await fetch("/api/oracle/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -384,6 +426,7 @@ export async function optimizeQuery(
   // UI can render a flowchart instead of just the DBMS_XPLAN text. Best-effort.
   let planTree: PlanNode[] | undefined;
   try {
+    onPhase?.("plan-tree");
     const ptRes = await fetch("/api/oracle/plan-tree", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -410,6 +453,7 @@ export async function optimizeQuery(
   let schemaBlock = "";
   if (tableNames.length > 0) {
     try {
+      onPhase?.("schema");
       const schemaRes = await fetch("/api/oracle/schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -441,7 +485,13 @@ export async function optimizeQuery(
   let aiRewrite = "";
   let aiError: string | null = null;
   let aiCandidates: { label: string; query: string; explanation: string }[] = [];
+  // Structured AI insights — diagnosis (issues), rationale (why_better) and
+  // caveats (trade_offs). Lives on its own field so the Rewrite tab can stay
+  // pure SQL and the Recommendation tab can render this as proper UI
+  // sections instead of stuffing it into SQL comments.
+  let aiAnalysis: import("@/components/optimize-demo").AiAnalysisSummary | undefined;
   try {
+    onPhase?.("ai");
     const aiRes = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -451,6 +501,7 @@ export async function optimizeQuery(
         rules: ruleSummaries,
         schema: schemaBlock || undefined,
         indexes: indexesBlock || undefined,
+        provider: llmProvider,
       }),
     });
     const aiData = await aiRes.json();
@@ -459,13 +510,33 @@ export async function optimizeQuery(
     } else if (aiData.optimized_queries?.length) {
       aiCandidates = aiData.optimized_queries;
       const best = aiData.optimized_queries[0];
-      const explainBlock = aiData.explanation?.why_better
-        ? `\n\n-- Why this is better:\n-- ${aiData.explanation.why_better.replace(/\n/g, "\n-- ")}`
-        : "";
-      const tradeoffBlock = aiData.explanation?.trade_offs
-        ? `\n\n-- Trade-offs:\n-- ${aiData.explanation.trade_offs.replace(/\n/g, "\n-- ")}`
-        : "";
-      aiRewrite = `-- ${best.label} (${aiData.provider}/${aiData.model}, confidence ${Math.round((aiData.confidence ?? 0) * 100)}%)\n${best.query}${explainBlock}${tradeoffBlock}`;
+      // Rewrite tab now shows ONLY the SQL — no header comment, no trailing
+      // explanation block. The "why" lives in the Recommendation tab.
+      aiRewrite = best.query;
+      aiAnalysis = {
+        decision: aiData.decision ?? "NEEDS_IMPROVEMENT",
+        confidence: typeof aiData.confidence === "number" ? aiData.confidence : 0,
+        issues: Array.isArray(aiData.issues) ? aiData.issues : [],
+        explanation: {
+          why_inefficient: aiData.explanation?.why_inefficient ?? "",
+          why_better:      aiData.explanation?.why_better ?? "",
+          trade_offs:      aiData.explanation?.trade_offs ?? "",
+        },
+        recommended_indexes: mergeIndexRecs(
+          // Rule engine's deterministic DDL (from MISSING_INDEX_ON_FILTER,
+          // AGGREGATE_INDEX_HINT, etc.). Always valid Oracle syntax — these
+          // are programmatically generated, not LLM-emitted.
+          triggered
+            .map((r) => r.index_recommendation)
+            .filter((s): s is string => !!s && s.trim().length > 0),
+          // AI's suggestions. May echo the rule-engine ones (deliberate, per
+          // the system prompt) — mergeIndexRecs dedupes by normalised text.
+          Array.isArray(aiData.recommended_indexes) ? aiData.recommended_indexes : [],
+        ),
+        candidate_label: best.label ?? "Rewrite",
+        provider: aiData.provider ?? "?",
+        model:    aiData.model ?? "?",
+      };
     }
   } catch (e) {
     aiError = e instanceof Error ? e.message : "AI request failed";
@@ -484,6 +555,7 @@ export async function optimizeQuery(
 
   if (aiCandidates.length > 0) {
     try {
+      onPhase?.("benchmark");
       const benchRes = await fetch("/api/oracle/benchmark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -587,6 +659,7 @@ export async function optimizeQuery(
     plan,
     planTree,
     rewrite: aiRewrite || (aiError ? `-- AI rewrite unavailable: ${aiError}` : ""),
+    aiAnalysis,
     benchmark: {
       before: { ms: beforeMs, cost, rows: rowsBefore },
       after:  { ms: afterMs,  cost, rows: rowsAfter  },
@@ -595,5 +668,6 @@ export async function optimizeQuery(
     summary,
   };
 
+  onPhase?.("done");
   return { result, logId: data.query_log_id ?? null };
 }

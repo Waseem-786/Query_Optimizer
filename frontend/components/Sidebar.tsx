@@ -3,7 +3,7 @@
 import * as React from "react";
 import {
   IcDatabase, IcPlus, IcSearch, IcMessage, IcZap,
-  IcTrash, IcChevronRight,
+  IcTrash, IcChevronRight, IcSettings,
 } from "./icons";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -31,6 +31,9 @@ type Props = {
   // reloads. The logo doubles as the toggle in both states.
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  // Opens the Settings modal (LLM provider picker, etc). Reachable from a
+  // gear icon in both the full and rail layouts.
+  onOpenSettings: () => void;
 };
 
 function relTime(ts: number): string {
@@ -43,7 +46,7 @@ function relTime(ts: number): string {
 
 export function Sidebar({
   mode, onModeChange, history, activeId, onSelect, onNew, onDelete,
-  connection, onOpenConnection, collapsed, onToggleCollapsed,
+  connection, onOpenConnection, collapsed, onToggleCollapsed, onOpenSettings,
 }: Props) {
   const [q, setQ] = React.useState("");
   const filtered = React.useMemo(() => {
@@ -87,6 +90,7 @@ export function Sidebar({
             onModeChange={onModeChange}
             onNew={onNew}
             onOpenConnection={onOpenConnection}
+            onOpenSettings={onOpenSettings}
           />
         ) : (
           <FullContent
@@ -102,6 +106,7 @@ export function Sidebar({
             connection={connection}
             onOpenConnection={onOpenConnection}
             onToggleCollapsed={onToggleCollapsed}
+            onOpenSettings={onOpenSettings}
           />
         )}
       </div>
@@ -113,7 +118,7 @@ export function Sidebar({
 // Rail (collapsed) — 56 px icon-only navigation
 // ============================================================================
 function RailContent({
-  mode, connection, onToggleCollapsed, onModeChange, onNew, onOpenConnection,
+  mode, connection, onToggleCollapsed, onModeChange, onNew, onOpenConnection, onOpenSettings,
 }: {
   mode: Mode;
   connection: { user: string; host: string } | null;
@@ -121,6 +126,7 @@ function RailContent({
   onModeChange: (m: Mode) => void;
   onNew: () => void;
   onOpenConnection: () => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="flex flex-col items-center h-full py-3 gap-2 w-[56px]">
@@ -166,6 +172,14 @@ function RailContent({
         <IcPlus size={15} />
       </button>
       <div className="mt-auto flex flex-col items-center gap-2">
+        <button
+          onClick={onOpenSettings}
+          title="Settings (AI provider, etc.)"
+          aria-label="Open settings"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-fg hover:bg-surface-2 transition-colors"
+        >
+          <IcSettings size={15} />
+        </button>
         <ThemeToggle />
         <button
           onClick={onOpenConnection}
@@ -188,7 +202,7 @@ function RailContent({
 // ============================================================================
 function FullContent({
   mode, onModeChange, filtered, q, setQ, activeId, onSelect, onNew, onDelete,
-  connection, onOpenConnection, onToggleCollapsed,
+  connection, onOpenConnection, onToggleCollapsed, onOpenSettings,
 }: {
   mode: Mode;
   onModeChange: (m: Mode) => void;
@@ -202,6 +216,7 @@ function FullContent({
   connection: { user: string; host: string } | null;
   onOpenConnection: () => void;
   onToggleCollapsed: () => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="flex flex-col h-full w-[280px]">
@@ -223,7 +238,17 @@ function FullContent({
           <div className="text-[13px] font-semibold tracking-tight">QueryMind</div>
           <div className="text-[11px] text-dim">SQL Workbench</div>
         </button>
-        <div className="ml-auto"><ThemeToggle /></div>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={onOpenSettings}
+            title="Settings (AI provider, etc.)"
+            aria-label="Open settings"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted hover:text-fg hover:bg-surface-2 transition-colors"
+          >
+            <IcSettings size={14} />
+          </button>
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Mode toggle */}

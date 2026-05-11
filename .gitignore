@@ -49,8 +49,21 @@ yarn-error.log*
 # session creates dozens of timestamped files.
 .playwright-mcp/
 
-# Ad-hoc test screenshots from manual / automated UX runs (e.g. test-01-…,
-# ux-03-…). Real screenshots that belong in docs/ should be checked in
-# explicitly with a meaningful name.
+# Ad-hoc test screenshots from manual / automated UX / bug-hunt runs.
+# These accumulate fast (Playwright takes a new one every other step), and
+# none of them are intended for the repo. Real screenshots that belong in
+# docs/ go under docs/ — anything at the repo root is by definition a
+# diagnostic. The `/` anchor scopes the wildcard to the repo root so
+# legitimate PNGs in docs/, frontend/public/, etc. still pass through.
 test-*.png
 ux-*.png
+/*.png
+
+# Stray root-level package files. The real frontend project lives at
+# frontend/ — anything matching at the repo root is almost always npm
+# running from the wrong directory and creates a phantom workspace root
+# that breaks Turbopack's tailwind resolution (the "two lockfiles, picked
+# the parent" warning).
+/package.json
+/package-lock.json
+/node_modules/

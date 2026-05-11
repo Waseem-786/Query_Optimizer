@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateRewrite, LlmConfigError, type RewriteRequest } from "@/lib/llm";
 
+// Body shape: RewriteRequest + optional `provider` override that the frontend
+// settings modal can pass through. The route validates/honours it via
+// pickProvider() in lib/llm.ts.
+interface AnalyzeBody extends RewriteRequest {
+  provider?: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as RewriteRequest;
+    const body = (await req.json()) as AnalyzeBody;
     if (!body.query || !body.query.trim()) {
       return NextResponse.json({ error: "Query is required." }, { status: 400 });
     }
 
-    const analysis = await generateRewrite(body);
+    const analysis = await generateRewrite(body, body.provider);
     return NextResponse.json(analysis);
   } catch (err) {
     if (err instanceof LlmConfigError) {

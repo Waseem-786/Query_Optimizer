@@ -33,7 +33,24 @@
       "PowerShell(npx --no-install next lint 2>&1)",
       "PowerShell(npm run lint 2>&1)",
       "PowerShell(npx --no-install tsc --noEmit 2>&1)",
-      "PowerShell(.\\\\node_modules\\\\.bin\\\\tsc --noEmit 2>&1)"
+      "PowerShell(.\\\\node_modules\\\\.bin\\\\tsc --noEmit 2>&1)",
+      "PowerShell(git ls-remote origin main 2>&1)",
+      "PowerShell(git rm --cached frontend 2>&1)",
+      "PowerShell(git add frontend/ 2>&1)",
+      "PowerShell(git push origin main 2>&1)",
+      "PowerShell(npm install @anthropic-ai/claude-agent-sdk 2>&1)",
+      "Bash(grep -oE \"export function Ic[A-Za-z]+\" \"$\\(pwd\\)/frontend/components/icons.tsx\")",
+      "PowerShell(netstat -ano)",
+      "PowerShell(npm run dev 2>&1)",
+      "Read(//c/Users/Admin/AppData/Local/Temp/claude/c--Users-Admin-Desktop-Study-Gravity-Query-Optimizer/1cde3387-545c-4a60-ae7d-ac00e5d934aa/tasks/**)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 1; \\(Get-Process node -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "PowerShell($root = \"C:\\\\Users\\\\Admin\\\\Desktop\\\\Study\\\\Gravity\\\\Query_Optimizer\\\\frontend\"; Write-Host \"--- frontend root ---\"; Get-ChildItem -Force -Path $root | Where-Object { -not $_.PSIsContainer } | Select-Object Name; Write-Host \"---\"; Test-Path \"$root\\\\.next\"; Test-Path \"$root\\\\node_modules\\\\tailwindcss\"; Write-Host \"---\"; Get-Content \"$root\\\\next.config.ts\")",
+      "PowerShell(\\(Get-Process node -ErrorAction SilentlyContinue | Measure-Object\\).Count)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Admin\\Desktop\\Study\\Gravity\\Query_Optimizer"
     ]
   }
 }
