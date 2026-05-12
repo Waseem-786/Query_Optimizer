@@ -403,3 +403,18 @@ Running log of every issue found and fixed in this project. New entries are appe
 - **Fix** — In [page.tsx](frontend/app/page.tsx), the delete handler now checks whether the deleted id was active. If so it resets the panel: `setActiveId(null)`, plus `setChatLoadKey(n => n + 1)` (chat mode) to remount ChatPanel with empty state, or `setSql/setResult/setError` resets (optimize mode).
 - **Files** — [frontend/app/page.tsx](frontend/app/page.tsx)
 - **Verified** — Planted a chat, clicked it to load, clicked its delete button. Sidebar shows "No items"; ChatPanel returns to the welcome state; sessionStorage history is `[]`.
+
+## 36. ErrorModal overflowed the viewport when the failing query was long
+- **Severity** — Medium (UX / blocker on small viewports)
+- **Area** — Frontend / layout
+- **Date fixed** — 2026-05-12
+- **Status** — ✅ Fixed
+- **Repro** — Run any query that produces both a multi-line Oracle error (e.g. `ORA-06550` stack with `PLS-00201` follow-on) AND triggers the ErrorModal's "Details" block (which echoes the first 600 chars of the failing SQL). On a typical laptop viewport (~585 px), the modal card grew to ~900 px tall — the "Got it" close button and "Common causes" footer sat *below* the screen edge. Esc / backdrop-click still dismissed, but the visible button was unreachable.
+- **Root cause** — The card had `max-w-[460px] overflow-hidden` but no `max-height`. The inner content (header + body + footer) was a plain `<div>` chain with no scroll container — it expanded the card to the natural size of its content.
+- **Fix** — Restructured [ErrorModal.tsx](frontend/components/ErrorModal.tsx) to a three-row flex column:
+  1. Outer card: `max-h-[calc(100vh-2rem)] flex flex-col` (caps height at viewport minus the wrapper's p-4 gutter).
+  2. Header: `shrink-0` — always pinned.
+  3. Body: `flex-1 min-h-0 overflow-y-auto` — scrolls internally when the Error / Details blocks are tall.
+  4. Footer (with "Got it"): `shrink-0` — always pinned at the bottom.
+- **Files** — [frontend/components/ErrorModal.tsx](frontend/components/ErrorModal.tsx)
+- **Verified** — Repro query on the same 585 px viewport: card now sits at 552 px (was 906 px), the inner body scrolls (clientHeight 417 / scrollHeight 555), and the "Got it" button is fully visible.

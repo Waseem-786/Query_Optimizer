@@ -48,8 +48,15 @@ export function ErrorModal({ open, title, message, detail, onClose }: Props) {
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative card shadow-lg-app w-full max-w-[460px] overflow-hidden border border-danger/40">
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-default bg-danger-soft/30">
+      {/*
+        Three-row flex column: pinned header, scrollable body, pinned footer.
+        The card is capped at the viewport (minus the wrapper's p-4 = 2rem
+        gutter) so a long ORA-NNNNN stack trace + the failing query in the
+        Details block can no longer push the "Got it" button below the fold —
+        the body scrolls instead.
+      */}
+      <div className="relative card shadow-lg-app w-full max-w-[460px] max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden border border-danger/40">
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-default bg-danger-soft/30 shrink-0">
           <div className="w-9 h-9 rounded-lg bg-danger-soft border border-danger/40 flex items-center justify-center shrink-0">
             <IcAlert size={17} className="text-danger" />
           </div>
@@ -70,7 +77,7 @@ export function ErrorModal({ open, title, message, detail, onClose }: Props) {
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
           <div className="rounded-md bg-surface-2 border border-default p-3">
             <div className="text-[11px] uppercase tracking-wide text-dim font-semibold mb-1.5">
               Error
@@ -98,7 +105,7 @@ export function ErrorModal({ open, title, message, detail, onClose }: Props) {
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-default flex items-center justify-end gap-2 bg-surface-2/50">
+        <div className="px-5 py-3 border-t border-default flex items-center justify-end gap-2 bg-surface-2/50 shrink-0">
           <button onClick={onClose} className="btn btn-primary">
             Got it
           </button>

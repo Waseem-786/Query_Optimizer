@@ -47,7 +47,11 @@
       "PowerShell(Stop-Process -Force)",
       "PowerShell(Get-Process node -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 1; \\(Get-Process node -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
       "PowerShell($root = \"C:\\\\Users\\\\Admin\\\\Desktop\\\\Study\\\\Gravity\\\\Query_Optimizer\\\\frontend\"; Write-Host \"--- frontend root ---\"; Get-ChildItem -Force -Path $root | Where-Object { -not $_.PSIsContainer } | Select-Object Name; Write-Host \"---\"; Test-Path \"$root\\\\.next\"; Test-Path \"$root\\\\node_modules\\\\tailwindcss\"; Write-Host \"---\"; Get-Content \"$root\\\\next.config.ts\")",
-      "PowerShell(\\(Get-Process node -ErrorAction SilentlyContinue | Measure-Object\\).Count)"
+      "PowerShell(\\(Get-Process node -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "PowerShell(Get-Process -Id 8076)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId = 8076\")",
+      "PowerShell($p = Get-CimInstance Win32_Process -Filter \"ProcessId = 8076\"; $p.CommandLine; \"---\"; $p.ExecutablePath)",
+      "mcp__playwright__browser_resize"
     ],
     "additionalDirectories": [
       "C:\\Users\\Admin\\Desktop\\Study\\Gravity\\Query_Optimizer"
